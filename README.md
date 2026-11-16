@@ -7,60 +7,76 @@ displays Health, Magicka, Stamina, player poise, weather, and a sneak light indi
 mechanics to Skyrim with zero dependencies on other poise or combat mods. The
 HUD/plugin still requires the tools listed below, and balancing and compatibility
 testing are ongoing. See [POISE_GUIDE.txt](./POISE_GUIDE.txt) for a player-friendly
-explanation and a list of all INI settings.
+explanation and poise settings.
 
 **AI disclosure:** This mod was built with AI assistance.
+
+## Credits
+
+- [Prisma UI](https://www.nexusmods.com/skyrimspecialedition/mods/148718) by StarkMP
+  provides the framework for the HUD.
 
 ## Requirements
 
 - Skyrim SE/AE, SKSE64, Address Library, and PrismaUI
 - Optional: SKSE Menu Framework, for the in-game settings menu
 
-Players do not need a compiler or any build tools. Those are only for
-[building from source](#building-from-source-developers).
+Built-in poise is currently validated only for Skyrim **1.7.104.0**; see
+[compatibility](#compatibility-and-troubleshooting) for details.
 
 ## Installation (Players)
 
-1. Install the requirements above: SKSE64 and PrismaUI (with Address Library).
+1. Install SKSE64, Address Library, and PrismaUI for your game version. Install
+   SKSE Menu Framework too if you want to change settings in game.
 2. Download the release archive, `poisesystemhud_1.3.1.zip`.
 3. Install it as a mod with Mod Organizer 2 or Vortex (for example, **Install a new mod from an archive**
    in Mod Organizer 2), then enable it.
 
-The archive contains `SKSE/Plugins/poisesystemhud.dll` with its matching PDB and `poisesystemhud.ini`,
-`PrismaUI/views/poisesystemhud/`, `fomod/info.xml`, `README.md`, and `POISE_GUIDE.txt`.
+## Changing settings
 
-The HUD is hidden in menus and while loading. In gameplay, **F10** reloads the view.
-For live edits, change the installed copy of the view files, not just the source files.
-The plugin writes `poisesystemhud.log` to the SKSE log directory.
+With SKSE Menu Framework installed, open its menu and select **Poise System and
+Minimalist HUD → Settings**. Change the HUD or poise settings there, close the
+menu, and press **F10** during gameplay to refresh the HUD and apply your changes.
+Some visual controls update immediately.
 
-Edit the installed `SKSE/Plugins/poisesystemhud.ini` under `[HUD]`: `iSideOffsetLeft` and
-`iBottomOffset` position the minimalist cluster. Press **F10** after editing to
-reload the view and apply settings. The reload key is fixed to F10; older `iReloadKey`
-settings are ignored.
-Missing or invalid values retain their previous settings and are logged.
+Without the menu framework, edit the installed `SKSE/Plugins/poisesystemhud.ini`
+in your mod manager, save it, and press **F10** during gameplay. Missing or invalid
+values retain their previous settings and are logged. F10 is fixed; the older
+`iReloadKey` setting is ignored.
 
-`bEnableWeatherWidget` controls the location/date/weather widget;
-`bEnableSneakLightGem` controls the sneak indicator. Set either to `false` to disable it.
-Press F10 to apply changes.
-The minimalist bars use combat, weapon-drawn, depleted-stat, and sprint state for
-visibility. Stamina drain from movement mods also reveals the stamina bar without
-requiring special movement-action detection. The prototype's projected heal-over-time layer is not shown because the game
-bridge does not provide a reliable future healing target; actual healing still updates
-the main bar and damage trail. Weather uses the current weather record's flags; unknown or unavailable
-weather is shown as unknown, and interior cells display Indoors. Unnamed exterior
-locations fall back to the worldspace name or Wilderness. The displayed calendar
-uses the Fourth Era.
+## HUD
 
-The retained dynamic visibility settings now apply to the Minimalist bars:
-when all enabled resources are full and the player is idle, the bars fade to
-`fIdleOpacity` after `fFadeDelaySeconds`. `bAlwaysOn=true` or `bDynamicHUD=false`
-keeps enabled bars visible. The weather widget and sneak light gem are not faded.
-Previously these controls only affected the removed layout.
+The HUD is hidden in menus and while loading. Health, Magicka, Stamina, and
+player poise appear in the minimalist cluster. Use **Left Offset** and **Bottom
+Offset** in the settings menu (or `iSideOffsetLeft` and `iBottomOffset` in
+`[HUD]`) to reposition it. The weather/location widget and sneak light gem can
+also be turned off in the menu.
 
-The light gem reads CommonLibSSE-NG's player high-process `lightLevel` field while
-sneaking, clamped to 0–100. The field's correspondence to Skyrim's GetLightLevel
-condition and its behavior across game versions require in-game verification; an
-unavailable or non-finite value hides the gem rather than displaying a false reading.
+By default, the resource bars fade after the player is idle with full resources.
+Combat, drawing a weapon or spell, depleted resources, and sprinting can reveal
+them; stamina drain from movement mods also reveals the stamina bar. Adjust the
+idle opacity and fade delay, or keep the bars visible using **Always On** or by
+disabling dynamic HUD. The weather widget and light gem do not fade with the bars.
+
+The weather widget shows **Indoors** inside and **Unknown** if weather is
+unavailable; unnamed exterior locations use the worldspace name or Wilderness.
+The calendar uses the Fourth Era. The light gem appears while sneaking, but its
+readings still need verification across game versions and it hides when a reading
+is unavailable.
+
+The yellow poise bar can be hidden without disabling gameplay. It displays the
+built-in system when available, or a compatible optional provider when built-in
+poise is disabled or unavailable. Without either, the bar stays hidden. You can
+also enable **Show Poise Numbers** for exact current and maximum values.
+
+### Target poise bar
+
+**Show Target Poise Bar** displays the name, tier, and poise of the most recently
+hit tracked NPC or creature in the upper-right corner. It is off by default,
+fades after four seconds without a hit, and dims while the target is immune to
+another poise break. It does not follow the crosshair.
+
+## Poise gameplay
 
 ### Built-in player poise
 
@@ -70,59 +86,50 @@ Player shield weight instead uses `fShieldWeightPoiseMultiplier` (default 0.0, r
 With `bApplyShieldWeightToNPCs=true` (default), non-player shield weight uses
 `fArmorWeightMultiplier`; set it to `false` to use the shield multiplier for them too.
 Negative shield multipliers reduce maximum poise, which is floored at 10 after summon scaling.
+Light Armor also adds poise based on its armor rating. Flesh spells and Dragonhide
+add poise too, with a larger bonus when unarmored than when wearing Light or Heavy Armor.
 The settings are available in the menu and apply on F10 reload. Eligible physical hits
 deplete poise; a break refills it, starts a grace period, and requests a directional vanilla
 stagger. Poise regenerates after the configured delay. Grace protects against eligible physical
 and magic poise damage; vanilla magic reactions, scripted reactions, knockdowns, and other engine
 reactions are not necessarily suppressed.
 
-`bEnableNPCPoise=true` also enables poise for loaded, living actors with the
-`ActorTypeNPC` keyword. The registry starts an actor at full poise on its first eligible hit,
-refreshes armor during updates, and discards stale state. Disabling the built-in system disables
-both player and NPC poise; F10 applies both switches. Unblocked physical hits use
+`bEnableNPCPoise=true` also enables poise for eligible loaded, living NPCs, who
+start at full poise. Disabling the built-in system disables player, NPC, and creature
+poise; F10 applies these switches. Unblocked physical hits use
 `fUnblockedPhysicalMultiplier=2.5`; ward spells alone do not count as physical blocking.
 
-Elemental spell impacts damage poise with elemental and magic resistance scaling; concentration
-hits are pooled and capped. Confirmed ward interception uses an estimated spell-record magnitude
+Elemental spell impacts damage poise with elemental and magic resistance scaling.
+Channeled concentration spells such as Flames, Frostbite, and Sparks do not deal
+direct poise damage by default, though their status debuffs still apply. Enable
+**Concentration Spells Deal Poise** to allow pooled, capped damage from them.
+Repeated cloak effects are also pooled and capped. Confirmed ward interception uses an estimated spell-record magnitude
 and `fWardMagicDamageMultiplier=0.35`. Actively blocking scales a hit's magic poise damage by
 `fShieldBlockedMagicMultiplier=0.4` with an equipped shield or `fWeaponBlockedMagicMultiplier=0.7` with a weapon alone;
 ward interception takes precedence, so the multipliers do not stack. Neither armor weight nor armor class adds a magic damage penalty.
-Elemental effects that arrive without a spell projectile, such as Lightning Cloak and other cloaks, are
-pooled like concentration spells, and explosions count once per spell and target alongside a direct hit.
+Explosions count once per spell and target alongside a direct hit.
 Casters need no keyword, so Dragon Priests, Dragons and Hagravens damage the player's poise. Spells cast by
-anyone other than the player are scaled by `fNPCMagicPoiseMultiplier` (0.6); with the ward multiplier that
-leaves a ward absorbing roughly 79% of an NPC spell's poise damage.
-No extra magicka is drained by this feature. The physical-hit hook can preserve a
-pre-existing executable call destination after checking the surrounding instructions, but
-ABI and gameplay compatibility with Valhalla and BFCO remain unverified. Conflicting update
-hooks or unrecognized call-site patches are rejected.
+anyone other than the player are scaled by `fNPCMagicPoiseMultiplier` (0.6); together
+with the ward multiplier, that leaves 21% of the original spell poise damage.
+No extra magicka is drained by this feature. Not every spell or impact path is covered.
 
-`bSuppressVanillaStaggers=true` (default, in `[Poise]`) drops vanilla staggers on poise-managed
-actors, namely the player, NPCs with `bEnableNPCPoise`, and creatures with `bEnableCreaturePoise`, so only
-poise breaks stagger them. It covers
-hit, bash and unclassified-impact staggers that reach the game's stagger routine, plus the ward-break
-reaction, which the game sends as a `WardBreak` animation event, and the `staggerStart` event that a timed
-bash sends straight to the animation graph without using the stagger routine. Because that last gate is by
-animation event, a `staggerStart` that another mod sends directly to a managed actor is dropped as well.
-`bAllowTimedBashStaggers=true` lets the stagger from a timed bash (`HitData` flag `kTimedBash`) through, for
-Valhalla Combat or vanilla's stamina-gated interrupt; it defaults to `false`. Shouts are never suppressed: every
-`kStagger` effect, including Unrelenting Force and Disarm, keeps its vanilla stagger. Untracked creatures
-(ambient critters, flying dragons), other
-animation events such as `recoil*`, and staggers that other mods trigger through the stagger routine's
-own entry points elsewhere are untouched. The routine gate is installed only if its code bytes and
-the shout whitelist hooks validate; the log line beginning `Vanilla stagger suppression:` reports the
-result. F10 applies changes to this setting.
+By default, **Suppress Vanilla Staggers** suppresses ordinary hit, bash, and
+ward-break staggers on actors managed by the poise system, so poise breaks cause
+their stagger instead. **Allow Timed Bash Staggers** lets timed-bash staggers
+through and is off by default. Shouts such as Unrelenting Force and Disarm keep
+their vanilla stagger. Other scripted or mod-added reactions may still occur;
+untracked creatures and flying creatures retain vanilla behavior. Suppression
+depends on compatibility checks; see [Compatibility and troubleshooting](#compatibility-and-troubleshooting).
 
 ### Creature poise
 
-`bEnableCreaturePoise=true` (default) gives creatures a poise pool sized by archetype. Each creature's race
-is matched by editor ID (with `ActorTypeDragon`/`ActorTypeGiant` keywords as fallback) when the game data loads,
-and the race table takes priority over `ActorTypeNPC`, so Draugr and Falmer are Medium and Dragon Priests are Boss.
+`bEnableCreaturePoise=true` (default) gives creatures a poise pool sized by archetype.
+Draugr and Falmer are Medium and Dragon Priests are Boss.
 The tier multiplier scales `fBasePoise` only; worn armor and spell bonuses still add on top.
 
 | Tier | Setting | Default | Races |
 |---|---|---:|---|
-| Light | `fLightCreaturePoiseMultiplier` | 0.75 | Wolves, Ice Wolves, Skeevers, Mudcrabs, Foxes, Horkers |
+| Light | `fLightCreaturePoiseMultiplier` | 0.75 | Wolves, Skeevers, Mudcrabs, Foxes, Horkers |
 | Medium | `fMediumCreaturePoiseMultiplier` | 1.7 | Draugr, Ice Wolves, Skeletons, Falmer, Chaurus, Sabre Cats, Frostbite Spiders, Ice Wraiths, Spriggans |
 | Heavy | `fHeavyCreaturePoiseMultiplier` | 3.75 | Bears, Trolls, Hagravens, Gargoyles, Dwarven Spheres, Chaurus Hunters, Werewolves |
 | Boss | `fBossCreaturePoiseMultiplier` | 6.0 | Dragons, Giants, Mammoths, Dwarven Centurions, Lurkers, Dragon Priests |
@@ -138,8 +145,6 @@ creature hit and multiplied by `fCreatureMultiplier` (default 0.8) times the att
 (`fLightCreatureDamageMultiplier` 0.6, `fMediumCreatureDamageMultiplier` 1.2, `fHeavyCreatureDamageMultiplier` 1.375,
 `fBossCreatureDamageMultiplier` 2.25; unlisted creatures 1.0) regardless of the race's unarmed weapon.
 Commanded actors such as summons have their maximum poise multiplied by `fSummonPoiseMultiplier` (1.5).
-Creature armor, flesh-spell and summon refreshes, and removal of untrackable creature entries, run from the
-player's update because the per-actor update hook does not tick creatures.
 With `bEnableCreaturePoise=false`, creatures keep vanilla behavior and Draugr, Falmer and Dragon Priests are
 treated as ordinary NPCs. F10 applies changes to these settings.
 
@@ -148,70 +153,39 @@ treated as ordinary NPCs. F10 applies changes to these settings.
 Physical hits taken while blocking are scaled from the unblocked hit: `fShieldBlockedPhysicalMultiplier` (0.25)
 when any shield is equipped and `fWeaponBlockedPhysicalMultiplier` (0.45) when blocking with a weapon alone, so a
 shield lets 25% of an unblocked hit through and a weapon 45%. The unblocked multiplier always applies first, so a
-blocked hit's poise damage is `(base + bonus) × type × power × fUnblockedPhysicalMultiplier × block`. This replaces
-the old single `fBlockedDamageMultiplier`, which is no longer read. Because the old value scaled the base hit instead
-(an effective 16% of an unblocked hit), blocking now absorbs less than before.
-
-### Target poise bar
-
-`bShowTargetPoiseBar=true` in `[HUD]` (or **Show Target Poise Bar** in SKSE Menu Framework) shows an upper-right
-bar reading `<Name> [<Tier>]  <current> / <maximum>` for the most recently hit tracked NPC or creature. It
-fades after 4 seconds without a hit, and the fill dims while the target is immune to another break. It is off
-by default and does not follow the crosshair.
-
-### Live poise telemetry (developer overlay)
-
-A click-through upper-left panel for verifying poise live. It shows the player's poise, flesh and Light Armor
-bonuses, regen rate, regen-delay and immunity timers and ceiling; the equipped right-hand weapon benchmark
-(`1H Light` / `Power` unblocked poise damage, including a labeled estimate of the physical-damage bonus from the
-weapon's base damage); the last-hit target with a light-hits-to-break estimate (kept for 15 seconds, or until it
-dies, unloads or another target is hit); and the last 5 poise hits involving you, newest first, as
-`[OUT|IN] Attacker -> Target (Type): final [Base + RawDmg [CAP] * multipliers]` with a `[STAGGER!]` tag on breaks.
-The debuff pills show the active poise debuffs (see below).
-
-It is off by default and costs nothing while off. Three controls share one state:
-
-- `bShowPoiseTelemetry=true` in `[HUD]`, applied with F10.
-- **Show Live Poise Telemetry (Dev)** in SKSE Menu Framework, under "Widget Visibility & Display".
-- The console command `showpoisedev` toggles it in game and prints `Poise Telemetry Overlay: ON` or `OFF`. It
-  is not saved to the INI, so F10 reloads the INI value. The command reuses an unused built-in console command
-  slot (`ClearScreenBlood`), so that vanilla command is unavailable while the plugin is loaded.
+blocked hit's poise damage is `(base + bonus) × type × power × fUnblockedPhysicalMultiplier × block`.
+The old `fBlockedDamageMultiplier` setting is no longer read.
 
 ### Poise status debuffs
 
-Hostile damage-over-time and drain effects slow posture recovery instead of dealing direct poise damage. Each
-debuff changes one value, same-type effects never stack, and different debuffs coexist. Only effects flagged hostile
-count, and an effect the actor cast on itself is ignored (except a detrimental bleed, which combat-hit perks apply with
-the victim as caster). Both the player and tracked NPCs and creatures are affected.
+Hostile damage-over-time and drain effects affect poise rather than dealing direct poise damage.
+Same-type effects do not stack, but different debuffs can coexist. Both the player and
+tracked NPCs and creatures are affected. Self-cast effects are ignored, except for
+bleeds applied by combat-hit perks.
 
 | Debuff | Trigger | Effect |
 | --- | --- | --- |
 | Sapped | hostile absorb effect (Vampiric Drain, Absorb Health and similar) | poise recovery stops |
-| Enfeebled | hostile poison (poison resist, or the `MagicAlchHarmful` keyword) | recovery is capped at a ceiling of maximum poise |
+| Enfeebled | hostile poison | recovery is capped at a ceiling of maximum poise |
 | Numbed | lingering hostile frost health damage | adds `fNumbedRegenDelayBonus` seconds to the regen delay set by a hit |
-| Hemorrhaging | hostile effect whose editor ID, name or spell name contains a `sHemorrhagingEffectKeywords` entry, or the vanilla `Skyrim.esm` bleed effect `PerkBleedingDamage` (`0x000C367A`, applied by the War Axe and Battleaxe perks) | recovery rate is multiplied by `fHemorrhagingRegenRateMultiplier` |
+| Hemorrhaging | bleed effects, including vanilla War Axe and Battleaxe perk bleeds and supported mod-added bleeds | recovery rate is multiplied by `fHemorrhagingRegenRateMultiplier` |
 | Scorched | lingering hostile fire health damage | incoming non-projectile physical hits deal `fScorchedMeleeDamageMultiplier` times the poise damage |
 
 Enfeebled scales with the strongest poison's magnitude per second: 0 gives `fEnfeebledRegenCeilingMax` and
 `fEnfeebledMagnitudeForMin` or more gives `fEnfeebledRegenCeilingMin`. The ceiling never drops below
 `fMinGlobalRegenCeiling`, only limits regeneration (poise already above it is not reduced and a poise break still
-refills fully), and does not change maximum poise. The boss regeneration multiplier still applies. Burst and
-concentration spell impacts keep their direct poise damage; the lingering ticks and absorb effects never deal any.
-Vanilla Skyrim's War Axe and Battleaxe perk bleed (`PerkBleedingDamage`, `0x000C367A` in `Skyrim.esm`) is matched by
-form ID, since it is flagged detrimental rather than hostile and has no editor ID at runtime; bleed mods are matched by
-keyword, which is comma-separated and case-insensitive. Bleed effects are accepted when flagged hostile or detrimental,
-and a missing caster is fine; a detrimental bleed also counts when the victim is its own caster, as the combat-hit perks
-apply it. Other effects count as hostile when their record or parent spell is flagged hostile.
+refills fully), and does not change maximum poise. The boss regeneration multiplier still applies.
+Burst spell impacts and enabled concentration spells can deal direct poise damage;
+lingering damage-over-time ticks and absorb effects do not. Mod-added bleeds are
+identified by the comma-separated, case-insensitive `sHemorrhagingEffectKeywords` setting.
 
 A hostile absorb effect (Vampiric Drain, an Absorb Health/Stamina/Magicka weapon enchantment) also keeps Sapped on for
-about 2 seconds from the hit, because weapon enchantments leave no lasting effect for the 0.5 second scan to find. A
-player absorb hit selects the target for the telemetry card. The pulse is gated by the same Sapped toggles, and it also
-lights the violet Health bar for the reactive bar effects.
+about 2 seconds from the hit. It can also turn the Health bar violet when reactive bar effects are enabled.
 
 `bEnablePoiseDebuffs=false` in `[Poise Debuffs]` (or **Enable Poise Status Debuffs** at the top of the **Poise
-Status Debuffs** menu section) skips all effect scanning and neutralizes every debuff; each debuff also has its own
+Status Debuffs** menu section) disables every poise debuff; each debuff also has its own
 `bEnable...Debuff` switch. With `bShowPoiseDebuffIcons=true` in `[HUD]` (or **Show Poise Debuff Icons**), a strip of
-24 px icons beneath the player poise bar shows the active debuffs, a tick on the bar marks the Enfeebled ceiling, and
+icons beneath the player poise bar shows the active debuffs, a tick on the bar marks the Enfeebled ceiling, and
 the poise bar stays visible while a debuff is active. The icons work without the telemetry overlay. Changes apply
 with F10.
 
@@ -222,57 +196,69 @@ Visibility & Display), hostile effects on the player tint the Minimalist HUD's H
 poison (toxic green) and Sapped (violet) tint the Health fill, a lingering burn adds an ember border and glow, a
 bleed pulses crimson, a Shock hit crackles electric blue on both Health and Magicka for 1.5 seconds, and a lingering
 frost effect chills the Stamina bar. They reuse the poise debuff effect scan, work with `bEnablePoiseDebuffs=false`,
-and need no new HUD elements; turning the setting off clears every effect and stops the scan for the player.
+and need no new HUD elements; turning the setting off clears the reactive bar visuals.
 Changes apply with F10.
 
-For development, `xmake build arpghud_magic_diagnostic` creates a separate DLL/PDB overlay in
-`dist/poisesystemhud_1.3.1-magic-diagnostic`, leaving the normal package untouched. Installing that DLL
-opts into experimental, logging-only hooks on the 1.7.104 magic-effect call and beam, flame, and
-missile projectile impact, `HandleHits`, and `ProcessImpacts` vtables and projectile spell- and ward-collision call sites. Each validates the expected original call or vtable target
-before installation and skips a conflicting patch. The log records form IDs, projectile type,
-collision layer, effect magnitude, and effect acceptance; it does not apply magic poise damage,
-ward mitigation, or magicka drain. The latest diagnostic also logs projectile handles, the
-enclosing sampled impact, collision-handler, impact-processing and spell-collision projectile handles for effect calls, ward power before and after the impact handler,
-and its returned pointer. A zero enclosing impact handle can also mean the impact was not sampled; the
-returned pointer by itself does not prove a successful ward block. Each hook logs at most 200 samples per game process; restart
-between test scenarios if the limit is reached. Collision layer 29 is Skyrim's ward layer, but
-its appearance alone does not establish a defender or prove a successful ward block.
-The original diagnostic build discarded projectile impact return values and should not be used.
-The latest build reports `ward collision outcomes` at startup and logs collision layer, ward power,
-engine return value and output flag from the ward-check path, plus elemental effect resistance data.
-It also logs game executable
-stack RVAs for up to eight accepted Flames and eight accepted Chain Lightning effects per run. Its gameplay compatibility
-still requires in-game verification. On 1.7.104, the last impact argument is a byte-sized flag;
-older diagnostic logs display undefined high bits for `arg7` and should not be interpreted as a
-32-bit value.
+## Compatibility and troubleshooting
 
-The built-in hit and player-update hook signatures are currently validated only for Skyrim
-**1.7.104.0**. If the runtime is different, an incompatible hook is already modified, or Chocolate Poise is
-loaded, the built-in mechanic is disabled and vanilla behavior is preserved. The log reports
-hook validation and installation. Other combat or animation overhauls may also conflict; disable
-built-in poise if using another player poise overhaul. Runtime and in-game compatibility must be
-tested with the installed mod list.
+The built-in poise system is currently validated only for Skyrim **1.7.104.0**.
+It disables itself if the game version is different, a required hook conflicts,
+or Chocolate Poise is loaded. Other combat or animation overhauls may conflict;
+compatibility with Valhalla Combat and BFCO remains unverified. Disable built-in
+poise if using another player poise overhaul, and test with your own mod list.
 
-`bShowPoiseBar=true` in `[HUD]` shows the existing yellow bar when built-in poise is available,
-or when the optional bridge supplies a positive maximum. It controls display only; setting it
-to `false` does not disable gameplay. Built-in poise takes display priority. When it is disabled
-or unavailable, the bridge is used; with neither, the bar remains hidden. This mod does not take
-TrueHUD special-resource ownership or modify its enemy bars.
+Installing TrueHUD, Chocolate Poise, or Valhalla alone does not connect their
+poise or stun values to this HUD. This mod does not take over TrueHUD's special
+resource or modify its enemy bars.
 
-For testing, set `bShowPoiseNumbers=true` in `[HUD]` or enable **Show Poise Numbers**
-in SKSE Menu Framework to display current and maximum poise to one decimal place.
-The numbers follow the poise bar's visibility and fade; they are off by default.
-`bShowTargetPoiseBar` is documented under "Target poise bar".
-Press F10 after editing the INI.
+If the HUD or poise is not working, check that the requirements are installed,
+the mod is enabled, and your game version is supported. Settings reload only
+during gameplay. The plugin writes `poisesystemhud.log` to the SKSE log directory;
+it records invalid settings and hook installation or compatibility failures.
 
-The following `[Poise]` settings apply on F10 without reinstalling hooks. Missing or invalid
-values retain their previous value. Disabling or re-enabling the mechanic resets transient
+## Settings reference
+
+The menu is the easiest way to adjust settings. For a full list of poise INI
+settings and a gameplay explanation, see [POISE_GUIDE.txt](./POISE_GUIDE.txt).
+The following tables give the defaults and accepted INI ranges.
+
+### HUD and appearance
+
+| Setting (`[HUD]`) | Default | Range | Meaning |
+|---|---:|---:|---|
+| `bEnableWeatherWidget` | true | boolean | Show location, date, and weather |
+| `bEnableSneakLightGem` | true | boolean | Show the light gem while sneaking |
+| `iSideOffsetLeft` | 20 | -500–2000 | Cluster distance from the left edge, in pixels |
+| `iBottomOffset` | 16 | -200–2000 | Cluster distance from the bottom edge, in pixels |
+| `bShowPoiseBar` | true | boolean | Show the player poise bar when poise is available |
+| `bShowPoiseNumbers` | false | boolean | Show current and maximum player poise |
+| `bShowTargetPoiseBar` | false | boolean | Show the most recently hit target's poise |
+| `bShowPoiseDebuffIcons` | true | boolean | Show active player poise debuffs and the recovery ceiling |
+| `bShowReactiveBarEffects` | true | boolean | Show status effects on resource bars |
+| `bDynamicHUD` | true | boolean | Fade resource bars when idle |
+| `bAlwaysOn` | false | boolean | Keep enabled bars visible at full opacity |
+| `fIdleOpacity` | 0 | 0–1 | Resource bar opacity when idle |
+| `fFadeDelaySeconds` | 3 | 0–600 | Seconds before idle bars fade |
+| `bShowPoiseTelemetry` | false | boolean | Show the [developer telemetry overlay](#live-poise-telemetry) |
+
+| Setting (`[MinimalistGraphics]`) | Default | Range | Meaning |
+|---|---:|---:|---|
+| `bMinBarFiligree` | true | boolean | Show decorative bar end caps and trim |
+| `fMinBarShine` | 1 | 0–2 | Bar shine intensity |
+| `fMinBarShadow` | 1 | 0–2 | Bar shadow depth |
+| `bMinBarNotches` | false | boolean | Show quarter marks on bar tracks |
+
+### Poise settings
+
+The following `[Poise]` settings apply on F10. Missing or invalid values retain
+their previous value. Disabling or re-enabling the mechanic resets transient
 poise; loading a save starts at full poise.
 
 | Setting | Default | Range | Meaning |
 |---|---:|---:|---|
 | `bEnableBuiltInPoise` | `true` | boolean | Enable built-in gameplay |
 | `bEnableNPCPoise` | `true` | boolean | Enable tracked NPC poise |
+| `bSuppressVanillaStaggers` | `true` | boolean | Suppress supported vanilla staggers on poise-managed actors |
 | `bAllowTimedBashStaggers` | `false` | boolean | Let the vanilla stagger from a timed bash through |
 | `bEnableCreaturePoise` | `true` | boolean | Enable creature poise pools and creature stagger suppression |
 | `fLightCreaturePoiseMultiplier` | 0.75 | 0.1–100 | Light creature `fBasePoise` scale |
@@ -318,16 +304,21 @@ poise; loading a save starts at full poise.
 | `fConcentrationPoiseMultiplier` | 1 | 0–100 | Concentration spell magnitude multiplier |
 | `fConcentrationIntervalSeconds` | 1 | 0.01–60 | Concentration pool interval |
 | `fConcentrationMaxPoisePerInterval` | 15 | 0–10000 | Maximum pooled damage per interval |
-| `bConcentrationSpellsDealPoise` (`[Magic Poise]`) | false | bool | When false, channeled concentration spells (Flames, Frostbite, Sparks) deal no direct poise damage, leaving it to impact spells; their Scorched and Numbed debuffs still apply |
 | `fWardMagicDamageMultiplier` | 0.35 | 0–1 | Confirmed ward interception multiplier |
 | `fShieldBlockedMagicMultiplier` | 0.4 | 0–1 | Magic poise multiplier while blocking with a shield |
 | `fWeaponBlockedMagicMultiplier` | 0.7 | 0–1 | Magic poise multiplier while blocking with a weapon |
+
+`[Magic Poise]`:
+
+| Setting | Default | Range | Meaning |
+|---|---:|---:|---|
+| `bConcentrationSpellsDealPoise` | false | boolean | Enable pooled direct poise damage from concentration spells; their status debuffs apply either way |
 
 `[Poise Debuffs]` keys (see "Poise status debuffs"):
 
 | Key | Default | Range | Meaning |
 | --- | --- | --- | --- |
-| `bEnablePoiseDebuffs` | true | bool | Master switch; false skips effect scanning entirely |
+| `bEnablePoiseDebuffs` | true | bool | Master switch for all poise debuffs |
 | `bEnableSappedDebuff`, `bEnableEnfeebledDebuff`, `bEnableNumbedDebuff`, `bEnableHemorrhagingDebuff`, `bEnableScorchedDebuff` | true | bool | Per-debuff switches |
 | `fEnfeebledRegenCeilingMin` | 0.70 | 0–1 | Recovery ceiling at full poison strength |
 | `fEnfeebledRegenCeilingMax` | 0.85 | 0–1 | Recovery ceiling for the weakest poison |
@@ -341,6 +332,19 @@ poise; loading a save starts at full poise.
 Hit damage starts as `fBaseHitPoiseDamage + weaponWeight * fWeaponWeightDamageMultiplier + min(fPhysicalDamagePoiseCap, physicalDamage * fPhysicalDamagePoiseMultiplier)`.
 The relevant attack-category, power-attack, and blocked multipliers are applied afterward.
 Missing weapon weight uses zero. Values are initial balance defaults, not in-game tuning claims.
+
+## Developer information
+
+### Live poise telemetry
+
+The optional upper-left telemetry overlay displays player and last-hit target
+poise, regeneration, timers, debuffs, weapon estimates, and the five most recent
+hits involving the player. Enable **Show Live Poise Telemetry (Dev)** in the
+menu or set `bShowPoiseTelemetry=true` in `[HUD]` and press F10.
+
+The console command `showpoisedev` toggles the overlay temporarily; F10 reloads
+the INI value. The command replaces the `ClearScreenBlood` console command slot
+while the plugin is loaded.
 
 ### Poise provider bridge
 
@@ -403,7 +407,7 @@ The plugin reapplies the vanilla Health, Magicka, and Stamina clip visibility, a
 position every 100 ms while the custom view is ready. This also hides their penalty-meter
 children. Other HUD replacements may use different Scaleform clip names.
 
-## Building from Source (Developers)
+### Building from source
 
 Building is only needed to modify the mod; players should use the release archive above.
 
