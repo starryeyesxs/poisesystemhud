@@ -1,0 +1,204 @@
+POISE SYSTEM - PLAYER GUIDE
+===========================
+
+Poise brings a true posture mechanic to Skyrim with no other poise or combat
+mod required. Every hit chips away at an enemy's (or your own) balance, and
+when it runs out they stagger.
+
+We aim to stay compatible with combat frameworks and HUD mods such as BFCO,
+Valhalla Combat, and TrueHUD, but that is a goal rather than a guarantee and
+still needs testing with individual setups. If Chocolate Poise is detected,
+built-in poise turns itself off to avoid competing with it.
+
+This system is a work in progress. Balance, spell coverage, and compatibility
+may change as testing continues. It requires Skyrim SE/AE, SKSE64, Address
+Library, and PrismaUI. The poise hooks are currently validated only for
+Skyrim 1.7.104.0.
+
+HOW POISE WORKS
+---------------
+Poise is a separate posture resource for you and, when enabled, for loaded,
+living NPCs and for creatures. The yellow bar shows your own poise. Hits lower
+it; when it reaches zero the target staggers, poise refills, and a short grace
+period protects against further poise breaks. A few seconds after the last hit,
+poise regenerates over time. Other vanilla or scripted reactions can still
+happen independently.
+
+MAXIMUM POISE
+Maximum poise starts at 40 and adds up:
+  - The weight of your worn light and heavy armor, multiplied by
+    fArmorWeightMultiplier (1.0 by default).
+  - Shield weight multiplied by fShieldWeightPoiseMultiplier (0.0 by default,
+    range -1.0 to 2.0). By default non-player actors instead use
+    fArmorWeightMultiplier for shield weight; set bApplyShieldWeightToNPCs to
+    false to use the shield multiplier for them too. Negative values reduce
+    maximum poise, but the final total cannot fall below 10.
+  - A Light Armor bonus: 0.15 per base armor-rating point of worn Light Armor,
+    up to +15. Shields don't count toward this bonus.
+  - Flesh spells: active Alteration armor spells such as Oakflesh add 0.45 per
+    armor point they grant; Dragonhide adds a flat +60.
+Flesh spell and Dragonhide poise is scaled by what you wear: any Heavy Armor
+= 45%, otherwise any Light Armor = 75%, otherwise (unarmored or cloth) 100%.
+Shields don't affect this check, so heavy and light armor is the trade-off:
+Light Armor gains rating poise and keeps most of your flesh spell bonus,
+Heavy Armor gains weight poise but loses more of the spell bonus.
+Creatures scale only the base 40 by their tier; summoned and commanded allies
+get x1.5 maximum poise.
+
+PHYSICAL HITS
+Melee hits, bashes, creature attacks, and arrows start from
+8 + (weapon weight x 0.5) + a damage bonus. The bonus is 5% of the hit's
+damage (sneak-attack multipliers included, before armor), capped at +6, so
+big hits matter but can't dominate. That total is then multiplied by:
+  - Attack type: two-handed x0.85, shield bash x1.0, weapon bash x0.35,
+    creature attack x0.8 (times the creature's own tier scale), arrow x0.8.
+  - Power attack: x1.5.
+  - Scorched (see debuffs): x1.2 on non-arrow hits.
+  - Unblocked hit: x2.5.
+Blocking lets only a share of that through: x0.25 with a shield, x0.45 with a
+weapon alone. Your Block skill, shield perks and well-timed parries shrink the
+damage further on blocked hits. A ward alone does not reduce physical poise
+damage.
+
+Example: a 20-weight two-hander, unblocked power attack, 200 damage:
+(8 + 10 + 6 capped) x 0.85 x 1.5 x 2.5 = about 76 poise damage.
+
+SPELL HITS
+Hostile fire, frost, and shock spell impacts damage poise, reduced by the
+target's elemental and magic resistance. Channeled spells you hold down
+(Flames, Frostbite, Sparks) deal NO direct poise damage by default, so poise
+damage comes from impact spells: projectiles, beams and explosions. Their
+status debuffs still apply, so Flames still sets enemies Scorched and
+Frostbite still Numbs them. You can turn this on in the INI, in which case
+channeled spells deal capped poise damage once per second. Cloak effects
+work the same way.
+A ward that blocks a spell takes most of the poise damage (x0.35). Blocking
+with a shield or weapon also reduces it (x0.4 shield, x0.7 weapon), but a
+ward takes precedence rather than stacking with them. Wards cost no extra
+Magicka for this system. Not every spell or impact path is covered yet.
+Spells cast by anyone but you deal x0.6 poise damage.
+
+CREATURES
+Creatures get poise by type (Light x0.75, Medium x1.7, Heavy x3.75, Boss x6.0
+of base poise) and hit harder by type. After a creature's poise break it is
+immune to another for 2 seconds, so you can't stunlock it, and bosses recover
+1.5x faster and always play their full stagger. Wolves and skeevers are Light;
+Draugr, Falmer and sabre cats are Medium; bears, trolls and werewolves are
+Heavy; Dragons, Dragon Priests, Giants and Centurions are Boss.
+Vanilla staggers are suppressed on actors using poise, so only poise breaks
+stagger them. Shouts such as Unrelenting Force always keep their stagger.
+
+POISE STATUS DEBUFFS
+Hostile damage-over-time and drain effects don't hit poise directly; they slow
+its recovery instead. They affect you, NPCs and creatures alike. Only hostile
+effects count (an effect cast on yourself is ignored), the same debuff never
+stacks, and different debuffs can be active together.
+  Sapped        Hit by an absorb effect (Vampiric Drain, Absorb Health, or an
+                absorb weapon enchantment, which holds it for about 2 seconds
+                per hit). Poise recovery stops.
+  Enfeebled     Poisoned. Poise only recovers up to a ceiling: 85% of maximum
+                for the weakest poison, down to 70% for a strong one. No
+                debuff can push the ceiling below 60%. Poise already above
+                the ceiling isn't reduced, and a poise break still refills it.
+  Numbed        Hit by lingering frost damage (Frostbite). Adds 1.0 second to
+                the wait before poise starts to recover.
+  Hemorrhaging  Bleeding: the War Axe perk's bleed, and bleed effects added by
+                other mods. Poise recovers at 65% speed.
+  Scorched      Burning from lingering fire damage (Flames). Whoever is burning
+                takes x1.2 poise damage from melee and bash hits; arrows are
+                unaffected.
+Your poise bar shows what is affecting you: small icons appear under the bar,
+a tick marks the Enfeebled ceiling, and the bar changes colour (Sapped violet,
+Enfeebled green, Scorched orange, Numbed icy blue, Hemorrhaging crimson). The
+bar stays visible while a debuff is active.
+
+Poise is reset when loading a save and may reset when toggling the system.
+
+SETTINGS
+--------
+Edit the installed Data\SKSE\Plugins\poisesystemhud.ini, then press F10 in game to
+reload settings. Missing or invalid values retain their previous value and are
+logged. true/false settings can also use 1/0. Defaults are shown below.
+
+[Poise] - gameplay
+bEnableBuiltInPoise=true          Enable the built-in player and NPC system.
+bEnableNPCPoise=true              Enable poise for eligible NPCs.
+bSuppressVanillaStaggers=true    Drop vanilla staggers on poise-managed actors.
+bAllowTimedBashStaggers=false    Let the vanilla stagger from a timed bash through.
+bEnableCreaturePoise=true         Enable creature poise pools and stagger suppression.
+fLightCreaturePoiseMultiplier=0.75   Light creatures (wolves, skeevers, mudcrabs) base poise scale.
+fMediumCreaturePoiseMultiplier=1.7   Medium creatures (draugr, falmer, chaurus, sabre cats) scale.
+fHeavyCreaturePoiseMultiplier=3.75   Heavy creatures (bears, trolls, werewolves) scale.
+fBossCreaturePoiseMultiplier=6.0     Boss creatures (dragons, giants, centurions) scale.
+fBossCreatureRegenMultiplier=1.5     Boss creature poise regeneration multiplier.
+fLightCreatureDamageMultiplier=0.6   Outgoing poise damage scale for light creatures.
+fMediumCreatureDamageMultiplier=1.2  Outgoing poise damage scale for medium creatures.
+fHeavyCreatureDamageMultiplier=1.375 Outgoing poise damage scale for heavy creatures.
+fBossCreatureDamageMultiplier=2.25   Outgoing poise damage scale for boss creatures.
+fCreatureStaggerImmunitySeconds=2.0  Seconds a creature cannot be poise-broken again.
+fSummonPoiseMultiplier=1.5           Maximum poise scale for summoned and commanded actors.
+fNPCMagicPoiseMultiplier=0.6         Magic poise scale for spells not cast by the player.
+fBasePoise=40.0                   Starting maximum poise.
+fArmorWeightMultiplier=1.0        Maximum poise per unit of worn armor weight.
+fShieldWeightPoiseMultiplier=0.0 Player shield weight multiplier, range -1.0 to 2.0.
+bApplyShieldWeightToNPCs=true    NPCs use fArmorWeightMultiplier for shield weight when true;
+                                 when false they use fShieldWeightPoiseMultiplier.
+fBaseHitPoiseDamage=8.0          Base physical hit poise damage.
+fWeaponWeightDamageMultiplier=0.5 Additional damage per weapon-weight unit.
+fPhysicalDamagePoiseMultiplier=0.05 Share of the hit's physical damage added to base damage.
+fPhysicalDamagePoiseCap=6.0      Hard cap on that physical-damage bonus.
+fTwoHandedMultiplier=0.85        Two-handed melee damage multiplier.
+fShieldBashMultiplier=1.0         Bash multiplier when a shield is equipped.
+fWeaponBashMultiplier=0.35        Bash multiplier for a weapon bash without a shield.
+fCreatureMultiplier=0.8          Hit multiplier for attacks by non-NPC creatures.
+fProjectileMultiplier=0.8        Physical projectile multiplier.
+fPowerAttackMultiplier=1.5       Power attack multiplier.
+fShieldBlockedPhysicalMultiplier=0.25 Physical hit multiplier when blocking with a shield.
+fWeaponBlockedPhysicalMultiplier=0.45 Physical hit multiplier when blocking with a weapon only.
+fUnblockedPhysicalMultiplier=2.5 Unblocked physical hit multiplier.
+fRegenDelaySeconds=3.0           Delay after damage before regeneration.
+fRegenRatePerSecond=8.0          Poise restored each gameplay second.
+fStaggerImmunitySeconds=1.0      Grace period after a poise break.
+fLightArmorRatingPoiseMultiplier=0.15 Maximum poise per base armor-rating point of worn Light Armor (no shields).
+fLightArmorRatingPoiseCap=15.0   Hard cap on the Light Armor rating bonus.
+fLightArmorFleshMultiplier=0.75  Flesh spell and Dragonhide scale while wearing Light Armor.
+fHeavyArmorFleshMultiplier=0.45  Same while wearing Heavy Armor; takes priority over Light.
+fFleshSpellPoiseMultiplier=0.45   Maximum poise per active Alteration armor point.
+fDragonhidePoiseBonus=60.0       Flat maximum poise bonus for Dragonhide.
+fMagicBurstPoiseMultiplier=2.0   Burst spell magnitude multiplier.
+fConcentrationPoiseMultiplier=1.0 Concentration spell magnitude multiplier.
+fConcentrationIntervalSeconds=1.0 Pooling interval for concentration spells (only if enabled).
+fConcentrationMaxPoisePerInterval=15.0 Maximum poise damage per interval (only if enabled).
+fWardMagicDamageMultiplier=0.35  Confirmed ward interception multiplier.
+fShieldBlockedMagicMultiplier=0.4 Magic poise multiplier while blocking with a shield.
+fWeaponBlockedMagicMultiplier=0.7 Magic poise multiplier while blocking with a weapon.
+
+[Magic Poise] - spell damage rules
+bConcentrationSpellsDealPoise=false  Channeled spells (Flames, Frostbite, Sparks) deal no
+                                 direct poise damage; their debuffs still apply.
+
+[Poise Debuffs] - status debuffs
+bEnablePoiseDebuffs=true         Master switch for all five debuffs.
+bEnableSappedDebuff=true         Individual switches for Sapped, Enfeebled, Numbed,
+bEnableEnfeebledDebuff=true      Hemorrhaging and Scorched.
+bEnableNumbedDebuff=true
+bEnableHemorrhagingDebuff=true
+bEnableScorchedDebuff=true
+fEnfeebledRegenCeilingMin=0.70   Recovery ceiling for a strong poison.
+fEnfeebledRegenCeilingMax=0.85   Recovery ceiling for the weakest poison.
+fEnfeebledMagnitudeForMin=10.0   Poison damage per second that counts as strong.
+fMinGlobalRegenCeiling=0.60      No debuff lowers the ceiling below this.
+fNumbedRegenDelayBonus=1.0       Extra seconds before recovery while Numbed.
+fHemorrhagingRegenRateMultiplier=0.65 Recovery speed while Hemorrhaging.
+sHemorrhagingEffectKeywords=bleed,hemorrhag  Words that mark a mod's effect as a bleed.
+fScorchedMeleeDamageMultiplier=1.20 Poise damage taken from melee while Scorched.
+
+[HUD] - poise display
+bShowPoiseBar=true               Show the poise bar; does not disable the system.
+bShowPoiseNumbers=false          Show current / maximum poise on the bar.
+bShowTargetPoiseBar=false        Bar for the last enemy you hit (name, type, poise).
+bShowPoiseDebuffIcons=true       Debuff icons and ceiling tick on the poise bar.
+
+See README.md for setting ranges, installation, HUD layout options and
+compatibility details. F10 is the fixed reload key and is not configurable in
+the INI. Tested alongside the CC F10 menu; they fire together with no issues.
