@@ -34,15 +34,9 @@ Built-in poise is currently validated only for Skyrim **1.7.104.0**; see
 
 ## Changing settings
 
-With SKSE Menu Framework installed, open its menu and select **Poise System and
-Minimalist HUD → Settings**. Change the HUD or poise settings there, close the
-menu, and press **F10** during gameplay to refresh the HUD and apply your changes.
-Some visual controls update immediately.
+With SKSE Menu Framework installed, open its menu and select Poise System and Minimalist HUD → Settings. Almost every HUD option and poise gameplay setting—including armor and weapon multipliers, block and magic mitigation, creature tier scaling, and status debuff rules—can be adjusted right in the menu. Close the menu and press F10 during gameplay to apply your changes and refresh the HUD (many visual adjustments update immediately).
 
-Without the menu framework, edit the installed `SKSE/Plugins/poisesystemhud.ini`
-in your mod manager, save it, and press **F10** during gameplay. Missing or invalid
-values retain their previous settings and are logged. F10 is fixed; the older
-`iReloadKey` setting is ignored.
+Without the menu framework, open the installed SKSE/Plugins/poisesystemhud.ini in your mod manager, save your edits, and press F10 during gameplay to live-reload them without restarting. Missing or invalid values safely keep their previous settings and are logged. F10 is the dedicated reload key.
 
 ## HUD
 
