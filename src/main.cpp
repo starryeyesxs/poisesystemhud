@@ -17,11 +17,15 @@
 #include "menu_framework.h"
 #endif
 
+#include <algorithm>
+#include <array>
 #include <atomic>
+#include <cctype>
 #include <charconv>
 #include <cmath>
 #include <filesystem>
 #include <string>
+#include <string_view>
 #include <unordered_set>
 
 namespace
@@ -33,6 +37,8 @@ namespace
 	{
 		bool enableWeatherWidget = true;
 		bool enableSneakLightGem = true;
+		int hudTheme = 0;
+		float hudScale = 1.0F;
 		int sideOffsetLeft = 20;
 		int bottomOffset = 16;
 		bool showPoiseBar = true;
@@ -52,6 +58,22 @@ namespace
 	};
 
 	HudSettings settings;
+
+	// Index 0 is the default theme; the names are the sHudTheme INI values and the ids are the view's theme names.
+	constexpr std::array<const char*, 2> kHudThemeNames{ "Daedric Iron", "Minimalist" };
+	constexpr std::array<const char*, 2> kHudThemeIds{ "daedric", "minimalist" };
+
+	std::string HudThemeScript()
+	{
+		const auto index = static_cast<std::size_t>(std::clamp(settings.hudTheme, 0, 1));
+		return std::format("configureHudTheme(\"{}\")", kHudThemeIds[index]);
+	}
+
+	std::string HudScaleScript()
+	{
+		return std::format("configureHudScale({:.2f})", std::clamp(settings.hudScale, 0.70F, 1.50F));
+	}
+
 	BuiltinPoise::Settings poiseSettings;
 	KeyHandlerEvent reloadKeyHandler = INVALID_REGISTRATION_HANDLE;
 	PRISMA_UI_API::IVPrismaUI1* prismaUI = nullptr;
@@ -156,6 +178,23 @@ namespace
 		};
 		readBool(L"bEnableWeatherWidget", "bEnableWeatherWidget", settings.enableWeatherWidget);
 		readBool(L"bEnableSneakLightGem", "bEnableSneakLightGem", settings.enableSneakLightGem);
+		{
+			const auto text = readValue(L"sHudTheme");
+			bool matched = false;
+			for (std::size_t i = 0; i < kHudThemeNames.size() && !matched; ++i) {
+				const std::string_view name = kHudThemeNames[i];
+				matched = std::ranges::equal(text, name, [](char a, char b) {
+					return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b));
+				});
+				if (matched) {
+					settings.hudTheme = static_cast<int>(i);
+				}
+			}
+			if (!matched) {
+				logger::warn("Invalid sHudTheme '{}'; retaining {}.", text, kHudThemeNames[settings.hudTheme]);
+			}
+		}
+		readRange(L"fHudScale", "fHudScale", settings.hudScale, 0.70F, 1.50F);
 		readBool(L"bShowPoiseBar", "bShowPoiseBar", settings.showPoiseBar);
 		readBool(L"bShowPoiseNumbers", "bShowPoiseNumbers", settings.showPoiseNumbers);
 		readBool(L"bShowTargetPoiseBar", "bShowTargetPoiseBar", settings.showTargetPoiseBar);
@@ -235,6 +274,9 @@ namespace
 		readRange(L"fFleshSpellPoiseMultiplier", "fFleshSpellPoiseMultiplier", poiseSettings.fleshSpellPoiseMultiplier, 0.0F, 100.0F, L"Poise");
 		readRange(L"fDragonhidePoiseBonus", "fDragonhidePoiseBonus", poiseSettings.dragonhidePoiseBonus, 0.0F, 100000.0F, L"Poise");
 		readRange(L"fMagicBurstPoiseMultiplier", "fMagicBurstPoiseMultiplier", poiseSettings.magicBurstPoiseMultiplier, 0.0F, 100.0F, L"Poise");
+		readRange(L"fClothingMagicPoiseMultiplier", "fClothingMagicPoiseMultiplier", poiseSettings.clothingMagicPoiseMultiplier, 0.0F, 3.0F, L"Poise");
+		readRange(L"fLightArmorMagicPoiseMultiplier", "fLightArmorMagicPoiseMultiplier", poiseSettings.lightArmorMagicPoiseMultiplier, 0.0F, 3.0F, L"Poise");
+		readRange(L"fHeavyArmorMagicPoiseMultiplier", "fHeavyArmorMagicPoiseMultiplier", poiseSettings.heavyArmorMagicPoiseMultiplier, 0.0F, 3.0F, L"Poise");
 		readRange(L"fMagicStaggerPoiseMultiplier", "fMagicStaggerPoiseMultiplier", poiseSettings.magicStaggerPoiseMultiplier, 0.0F, 100.0F, L"Poise");
 		readRange(L"fConcentrationPoiseMultiplier", "fConcentrationPoiseMultiplier", poiseSettings.concentrationPoiseMultiplier, 0.0F, 100.0F, L"Poise");
 		readRange(L"fConcentrationIntervalSeconds", "fConcentrationIntervalSeconds", poiseSettings.concentrationIntervalSeconds, 0.01F, 60.0F, L"Poise");
@@ -549,7 +591,7 @@ namespace
 		prismaUI->Invoke(hudView, script.c_str());
 	}
 
-	// showpoisedev: toggles the same state as bShowPoiseTelemetry and the menu checkbox. Not written to the INI.
+	// showpoisedev: toggles the same state as bShowPoiseTelemetry (there is no menu option). Not written to the INI.
 	bool ExecuteShowPoiseDev(const RE::SCRIPT_PARAMETER*, RE::SCRIPT_FUNCTION::ScriptData*, RE::TESObjectREFR*,
 		RE::TESObjectREFR*, RE::Script*, RE::ScriptLocals*, double&, std::uint32_t&)
 	{
@@ -571,7 +613,7 @@ namespace
 	{
 		auto* command = RE::SCRIPT_FUNCTION::LocateConsoleCommand("ClearScreenBlood");
 		if (!command) {
-			logger::warn("Console command showpoisedev not registered: the donor console command slot was not found. Use bShowPoiseTelemetry or the menu checkbox.");
+			logger::warn("Console command showpoisedev not registered: the donor console command slot was not found. Use bShowPoiseTelemetry in the INI.");
 			return;
 		}
 		command->functionName = "showpoisedev";
@@ -721,6 +763,10 @@ namespace
 			const auto layoutScript = std::format("configureLayouts({}, {})",
 				settings.enableWeatherWidget, settings.enableSneakLightGem);
 			prismaUI->Invoke(hudView, layoutScript.c_str());
+			const auto themeScript = HudThemeScript();
+			prismaUI->Invoke(hudView, themeScript.c_str());
+			const auto scaleScript = HudScaleScript();
+			prismaUI->Invoke(hudView, scaleScript.c_str());
 			const auto visibilityScript = std::format("configureVisibility({}, {}, {:.6f}, {:.6f})",
 				settings.alwaysOn, settings.dynamicHud, settings.idleOpacity, settings.fadeDelaySeconds);
 			prismaUI->Invoke(hudView, visibilityScript.c_str());
@@ -1038,6 +1084,9 @@ void SendSettingsToHudImpl(const std::string& changedKey)
 	if (changedKey == "bShowReactiveBarEffects") {
 		BuiltinPoise::SetReactiveBarsEnabled(settings.showReactiveBarEffects);
 	}
+	if (changedKey == "bEnableSneakLightGem") {
+		lastLightScript.clear();
+	}
 	if (!prismaUI || !viewReady || !HasValidView()) {
 		return;
 	}
@@ -1063,6 +1112,10 @@ void SendSettingsToHudImpl(const std::string& changedKey)
 
 	prismaUI->Invoke(hudView, positionScript.c_str());
 	prismaUI->Invoke(hudView, layoutScript.c_str());
+	const auto themeScript = HudThemeScript();
+	prismaUI->Invoke(hudView, themeScript.c_str());
+	const auto scaleScript = HudScaleScript();
+	prismaUI->Invoke(hudView, scaleScript.c_str());
 	prismaUI->Invoke(hudView, visibilityScript.c_str());
 	prismaUI->Invoke(hudView, minGraphicsScript.c_str());
 	if (changedKey == "bShowPoiseBar" || changedKey == "bShowPoiseNumbers" || changedKey == "resetHud") {
@@ -1075,6 +1128,8 @@ void SendSettingsToHudImpl(const std::string& changedKey)
 namespace menu_exports {
 	bool* get_enableWeatherWidget() { return &settings.enableWeatherWidget; }
 	bool* get_enableSneakLightGem() { return &settings.enableSneakLightGem; }
+	int* get_hudTheme() { return &settings.hudTheme; }
+	float* get_hudScale() { return &settings.hudScale; }
 	int* get_sideOffsetLeft() { return &settings.sideOffsetLeft; }
 	int* get_bottomOffset() { return &settings.bottomOffset; }
 	bool* get_showPoiseBar() { return &settings.showPoiseBar; }
@@ -1117,7 +1172,6 @@ namespace menu_exports {
 	float* get_summonPoiseMultiplier() { return &poiseSettings.summonPoiseMultiplier; }
 	float* get_npcMagicPoiseMultiplier() { return &poiseSettings.npcMagicPoiseMultiplier; }
 	bool* get_showTargetPoiseBar() { return &settings.showTargetPoiseBar; }
-	bool* get_showPoiseTelemetry() { return &settings.showPoiseTelemetry; }
 	bool* get_showPoiseDebuffIcons() { return &settings.showPoiseDebuffIcons; }
 	bool* get_showReactiveBarEffects() { return &settings.showReactiveBarEffects; }
 	bool* get_enablePoiseDebuffs() { return &poiseSettings.enablePoiseDebuffs; }
@@ -1138,6 +1192,9 @@ namespace menu_exports {
 	float* get_regenRatePerSecond() { return &poiseSettings.regenRatePerSecond; }
 	float* get_staggerImmunitySeconds() { return &poiseSettings.staggerImmunitySeconds; }
 	float* get_wardMagicDamageMultiplier() { return &poiseSettings.wardMagicDamageMultiplier; }
+	float* get_clothingMagicPoiseMultiplier() { return &poiseSettings.clothingMagicPoiseMultiplier; }
+	float* get_lightArmorMagicPoiseMultiplier() { return &poiseSettings.lightArmorMagicPoiseMultiplier; }
+	float* get_heavyArmorMagicPoiseMultiplier() { return &poiseSettings.heavyArmorMagicPoiseMultiplier; }
 	float* get_shieldBlockedMagicMultiplier() { return &poiseSettings.shieldBlockedMagicMultiplier; }
 	float* get_weaponBlockedMagicMultiplier() { return &poiseSettings.weaponBlockedMagicMultiplier; }
 	bool* get_concentrationSpellsDealPoise() { return &poiseSettings.concentrationSpellsDealPoise; }

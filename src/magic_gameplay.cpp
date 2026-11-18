@@ -59,6 +59,7 @@ namespace
 	constexpr double kSpellHitWindowSeconds = 1.5;
 	constexpr std::size_t kMaxProjectiles = 4096;
 	constexpr std::size_t kMaxPools = 4096;
+	constexpr float kMinimumProjectilelessBurstMagnitude = 8.0F;
 	float cleanupRemaining = 1.0F;
 	std::atomic_bool advancePending{ false };
 	unsigned appliedLogCount = 0;
@@ -156,9 +157,14 @@ namespace
 			logger::warn("Invalid elemental magic poise input; impact skipped.");
 			return;
 		}
+		if (impact.projectileless && !impact.concentration &&
+			impact.magnitude < kMinimumProjectilelessBurstMagnitude) {
+			return;
+		}
 		MagicPoise::DamageInput input;
 		input.magnitude = impact.magnitude;
 		input.magnitudeMultiplier = impact.concentration ? settings.concentrationPoiseMultiplier : settings.magicBurstPoiseMultiplier;
+		input.magicBurst = !impact.concentration;
 		input.staggerMultiplier = settings.magicStaggerPoiseMultiplier;
 		input.elementalResistance = elemental;
 		input.magicResistance = magic;

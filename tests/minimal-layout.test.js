@@ -140,9 +140,11 @@ test('layout visibility, weather, and gem respond independently', () => {
     c.updateMinimalStats(100, 100, 100, 100, 100, 100, false, true);
     assert.ok(!v.element('min-stamina').classList.contains('hidden'));
     assert.ok(v.element('min-health').classList.contains('hidden'));
+    c.configureHudTheme('minimalist');
     c.updateLightGem(true, 100);
     assert.equal(v.element('light-gem').hidden, false);
     assert.equal(v.element('light-gem-fill').attributes.height, '34');
+    assert.equal(v.element('daedric-light-gem').hidden, true);
     c.updateLightGem(true, null);
     assert.equal(v.element('light-gem').hidden, true);
     c.updateLightGem(false, 50);
@@ -223,5 +225,132 @@ test('poise numbers show raw values to one decimal and follow the poise bar', ()
     c.resetMinimal();
     assert.equal(label.hidden, true);
     assert.ok(row.classList.contains('hidden'));
+    assert.equal(v.errors.length, 0);
+});
+
+test('Daedric Iron is the default theme and the theme switches live', () => {
+    const v = createView(), c = v.context;
+    const layout = v.element('minimal-layout');
+    c.configureLayouts(true, true);
+    c.configureHudTheme('minimalist');
+    assert.ok(layout.classList.contains('theme-minimalist'));
+    assert.ok(!layout.classList.contains('theme-daedric'));
+    c.configureHudTheme('daedric');
+    assert.ok(layout.classList.contains('theme-daedric'));
+    assert.ok(!layout.classList.contains('theme-minimalist'));
+    c.configureHudTheme('Daedric Iron');
+    c.configureHudTheme(null);
+    assert.equal(v.errors.length, 2);
+    assert.ok(layout.classList.contains('theme-daedric'));
+});
+
+test('the Daedric light gem core follows light level, sneaking, the toggle and live theme changes', () => {
+    const v = createView(), c = v.context;
+    const core = v.element('daedric-light-gem'), dark = v.element('light-gem');
+    c.configureLayouts(true, true);
+    c.updateLightGem(true, 75);
+    assert.equal(core.hidden, false);
+    assert.equal(dark.hidden, true);
+    assert.equal(core.style.opacity, String(0.25 + 0.75 * 0.75));
+    assert.equal(core.style.boxShadow, `0 0 12px rgba(240, 198, 92, ${0.2 + 0.75 * 0.75})`);
+    assert.equal(core.attributes['aria-label'], 'Light level: 75 out of 100');
+    c.updateLightGem(true, 0);
+    assert.equal(core.style.opacity, '0.25');
+    assert.equal(core.style.boxShadow, '0 0 0px rgba(240, 198, 92, 0.2)');
+    c.updateLightGem(true, 100);
+    assert.equal(core.style.opacity, '1');
+    assert.equal(core.style.boxShadow, '0 0 16px rgba(240, 198, 92, 0.95)');
+    c.updateLightGem(true, null);
+    assert.equal(core.hidden, true);
+    c.updateLightGem(false, 50);
+    assert.equal(core.hidden, true);
+
+    // Switching themes while sneaking moves the gem without a new telemetry update; Minimalist stays untouched.
+    c.updateLightGem(true, 60);
+    c.configureHudTheme('minimalist');
+    assert.equal(core.hidden, true);
+    assert.equal(dark.hidden, false);
+    assert.equal(v.element('light-gem-fill').attributes.height, String(34 * 60 / 100));
+    c.configureHudTheme('daedric');
+    assert.equal(core.hidden, false);
+    assert.equal(dark.hidden, true);
+
+    c.configureLayouts(true, false);
+    assert.equal(core.hidden, true);
+    c.configureLayouts(true, true);
+    assert.equal(core.hidden, true);
+    c.updateLightGem(true, 40);
+    c.resetMinimal();
+    assert.equal(core.hidden, true);
+    assert.equal(v.errors.length, 0);
+});
+
+test('the HUD scale is validated and applied to the whole cluster for either theme', () => {
+    const v = createView(), c = v.context;
+    const layout = v.element('minimal-layout');
+    for (const theme of ['daedric', 'minimalist']) {
+        c.configureHudTheme(theme);
+        c.configureHudScale(1.25);
+        assert.equal(layout.style.properties.get('--hud-scale'), '1.25');
+    }
+    c.configureHudScale(0.7);
+    assert.equal(layout.style.properties.get('--hud-scale'), '0.7');
+    c.configureHudScale(1.5);
+    assert.equal(layout.style.properties.get('--hud-scale'), '1.5');
+    for (const bad of [0.69, 1.51, NaN, Infinity, '1.2', null]) c.configureHudScale(bad);
+    assert.equal(v.errors.length, 6);
+    assert.equal(layout.style.properties.get('--hud-scale'), '1.5');
+});
+
+test('the Daedric crest follows the same stealth visibility as the Minimalist diamond', () => {
+    const v = createView(), c = v.context;
+    const emblem = v.element('min-emblem'), core = v.element('daedric-light-gem'), dark = v.element('light-gem');
+    const run = theme => {
+        c.configureLayouts(true, true);
+        c.configureHudTheme(theme);
+        const gem = theme === 'daedric' ? core : dark;
+        // The diamond frame is shown whenever the light gem option is on; only the light gem follows sneaking.
+        assert.equal(emblem.hidden, false);
+        assert.equal(gem.hidden, true);
+        c.updateLightGem(true, 55);
+        assert.equal(emblem.hidden, false);
+        assert.equal(gem.hidden, false);
+        c.updateLightGem(true, null);
+        assert.equal(gem.hidden, true);
+        c.updateLightGem(true, 90);
+        assert.equal(gem.hidden, false);
+        c.updateLightGem(false, 90);
+        assert.equal(emblem.hidden, false);
+        assert.equal(gem.hidden, true);
+        c.configureLayouts(true, false);
+        assert.equal(emblem.hidden, true);
+        assert.equal(gem.hidden, true);
+    };
+    run('minimalist');
+    run('daedric');
+    assert.equal(v.errors.length, 0);
+});
+
+test('Daedric bar frames keep fixed caps and non-scaling rails while bar widths scale', () => {
+    const v = createView(), c = v.context;
+    const frame = c.daedricFrameMarkup();
+    assert.equal((frame.match(/class="dd-cap/g) || []).length, 2);
+    assert.equal((frame.match(/class="dd-cap right"/g) || []).length, 1);
+    assert.equal((frame.match(/viewBox="0 0 26 24"/g) || []).length, 2);
+    assert.equal((frame.match(/vector-effect="non-scaling-stroke"/g) || []).length, 4);
+    assert.match(frame, /<svg class="dd-mid-svg" viewBox="0 0 100 24" preserveAspectRatio="none">/);
+    assert.match(frame, /<svg class="dd-sigil" viewBox="0 0 96 24">/);
+    // Only the middle rails stretch; the caps and the sigil carry their own fixed viewBox and size.
+    assert.ok(frame.indexOf('dd-mid-svg') > frame.indexOf('dd-cap'));
+    assert.doesNotMatch(frame.slice(frame.indexOf('dd-cap'), frame.indexOf('dd-mid')), /preserveAspectRatio/);
+
+    c.configureLayouts(true, true);
+    c.configureHudTheme('daedric');
+    c.updateMinimalStats(200, 200, 300, 300, 100, 100, true, false);
+    assert.equal(v.element('min-health').style.width, '250px');
+    assert.equal(v.element('min-magicka').style.width, '300px');
+    c.updateMinimalStats(60, 200, 150, 300, 70, 100, true, false);
+    assert.equal(v.element('min-health').fill.style.transform, 'scaleX(0.3)');
+    assert.equal(v.element('min-health').trail.style.transform, 'scaleX(1)');
     assert.equal(v.errors.length, 0);
 });

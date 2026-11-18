@@ -1,8 +1,10 @@
 #include "../src/magic_poise_math.h"
+#include "../src/builtin_poise_state.h"
 
 #include <cassert>
 #include <cmath>
 #include <limits>
+#include <string_view>
 
 namespace
 {
@@ -54,6 +56,33 @@ int main()
 	input.concentrationAllowed = false;
 	assert(Near(Damage(input), 82.5F));
 	assert(DamageInput{}.concentrationAllowed);
+
+	DamageInput burst;
+	burst.magnitudeMultiplier = 1.2F;
+	burst.magicBurst = true;
+	burst.magnitude = 25.0F;
+	assert(Near(Damage(burst), 30.0F));
+	assert(Near(Explain(burst).raw, 30.0F));
+	burst.magnitude = 40.0F;
+	assert(Near(Damage(burst), 48.0F));
+	burst.magnitude = 50.0F;
+	assert(Near(Damage(burst), 53.5F));
+	burst.magnitude = 120.0F;
+	assert(Near(Damage(burst), 90.0F));
+
+	BuiltinPoise::Settings settings;
+	BuiltinPoise::ArmorProfile armor;
+	auto armorScale = BuiltinPoise::MagicArmorPoiseScale(settings, armor);
+	assert(std::string_view(armorScale.label) == "Clothing Armor");
+	assert(Near(armorScale.multiplier, 0.70F));
+	armor.hasLight = true;
+	armorScale = BuiltinPoise::MagicArmorPoiseScale(settings, armor);
+	assert(std::string_view(armorScale.label) == "Light Armor");
+	assert(Near(armorScale.multiplier, 1.00F));
+	armor.hasHeavy = true;
+	armorScale = BuiltinPoise::MagicArmorPoiseScale(settings, armor);
+	assert(std::string_view(armorScale.label) == "Heavy Armor");
+	assert(Near(armorScale.multiplier, 1.15F));
 
 	BurstDeduplicator bursts(3);
 	assert(bursts.Accept({ 0, 1 }) == BurstResult::invalid);

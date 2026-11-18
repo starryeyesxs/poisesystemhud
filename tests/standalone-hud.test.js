@@ -19,6 +19,22 @@ test('the only shipped layout is the minimalist view', () => {
     for (const file of ['index.html', 'minimal.css', 'minimal.js']) assert.ok(build.includes(`"view", "${file}"`));
 });
 
+test('the HUD scale is configured, persisted, reset, selectable live and sent to the view', () => {
+    const ini = read('poisesystemhud.ini'), main = read('src/main.cpp'), menu = read('src/menu_framework.cpp');
+    assert.match(ini.split('[Poise]')[0], /^fHudScale=1\.00$/m);
+    assert.match(main, /float hudScale = 1\.0F;/);
+    assert.match(main, /readRange\(L"fHudScale", "fHudScale", settings\.hudScale, 0\.70F, 1\.50F\)/);
+    assert.match(main, /configureHudScale\(\{:\.2f\}\)/);
+    assert.equal((main.match(/HudScaleScript\(\)/g) || []).length, 3);
+    assert.match(main, /float\* get_hudScale\(\) \{ return &settings\.hudScale; \}/);
+    assert.match(menu, /SliderFloat\("HUD Scale##layout", hudScale, 0\.70f, 1\.50f, "%\.2f"\)/);
+    assert.match(menu, /std::round\(\*hudScale \* 20\.0f\) \/ 20\.0f/);
+    assert.match(menu, /QueueIniWrite\("fHudScale", FloatToString\(\*hudScale\), "HUD"\)/);
+    assert.match(menu, /QueueIniWrite\("fHudScale", "1\.00", "HUD"\)/);
+    const css = read('view/minimal.css');
+    assert.match(css, /#minimal-layout \{[^}]*transform: scale\(var\(--hud-scale, 1\)\); transform-origin: left bottom;/);
+});
+
 test('removed layout settings do not appear in the runtime, menu or shipped ini', () => {
     const sources = ['poisesystemhud.ini', 'src/main.cpp', 'src/menu_framework.cpp'].map(read);
     const obsolete = /iHudStyle|fGlobeScale|fHotbarScale|iSideOffsetRight|iHotbarBottomOffset|bGlassEffects|fGlassShineOpacity|fMeniscusGlow|fOrbInnerShadow|bShowVitalNumbers/;
@@ -64,4 +80,19 @@ test('poise numbers are configured, persisted, reset and sent when toggled', () 
     const reload = main.slice(main.indexOf('void ReloadHud()'), main.indexOf('void RegisterReloadKey()\n\t{'));
     assert.match(reload, /LoadSettings\(\)/);
     assert.match(reload, /hasSentPoise = false/);
+});
+
+test('the HUD theme is configured, persisted, reset, selectable live and sent to the view', () => {
+    const ini = read('poisesystemhud.ini'), main = read('src/main.cpp'), menu = read('src/menu_framework.cpp');
+    assert.match(ini.split('[Poise]')[0], /sHudTheme=Daedric Iron/);
+    assert.match(ini, /"Minimalist"/);
+    assert.match(main, /int hudTheme = 0;/);
+    assert.match(main, /kHudThemeNames\{ "Daedric Iron", "Minimalist" \}/);
+    assert.match(main, /readValue\(L"sHudTheme"\)/);
+    assert.match(main, /configureHudTheme\(\\"\{\}\\"\)/);
+    assert.equal((main.match(/HudThemeScript\(\)/g) || []).length, 3);
+    assert.match(main, /int\* get_hudTheme\(\) \{ return &settings\.hudTheme; \}/);
+    assert.match(menu, /Combo\("HUD Theme##widgets", hudTheme, "Daedric Iron\\0Minimalist\\0"\)/);
+    assert.match(menu, /QueueIniWrite\("sHudTheme", \*hudTheme == 1 \? "Minimalist" : "Daedric Iron", "HUD"\)/);
+    assert.match(menu, /QueueIniWrite\("sHudTheme", "Daedric Iron", "HUD"\)/);
 });

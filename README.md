@@ -31,7 +31,7 @@ Without the menu framework, open the installed `SKSE/Plugins/poisesystemhud.ini`
 
 ## HUD
 
-* **Layout & Visibility:** The HUD hides in menus and loading screens, presenting resources (Health, Magicka, Stamina, poise) in a minimalist cluster that can be repositioned via UI settings or `.ini` options (`iSideOffsetLeft`, `iBottomOffset`). 
+* **Layout & Visibility:** The HUD hides in menus and loading screens, presenting resources (Health, Magicka, Stamina, poise) in a minimalist cluster that can be repositioned via UI settings or `.ini` options (`iSideOffsetLeft`, `iBottomOffset`).
 * **Dynamic Fading:** Resource bars fade out when you are idle with full stats, and reappear during combat, weapon/spell drawing, sprinting, or low resources. Weather and sneak indicators remain visible independently.
 * **Widgets & Light Gem:** The weather/location widget displays indoor/outdoor data and Fourth Era calendar dates. A sneak light gem appears while crouching, though readings depend on compatibility and hide if unavailable.
 * **Poise Display:** The yellow poise bar shows built-in or optional provider data (or hides if neither is active), with an optional toggle for exact numerical values.
@@ -102,7 +102,7 @@ Configure options via the **SKSE Menu Framework** or consult [POISE_GUIDE.txt](.
 
 ### HUD and appearance (`[HUD]`)
 
-* **Widgets & Layout:** Toggle the weather/location widget (`bEnableWeatherWidget`), sneak light gem (`bEnableSneakLightGem`), and customize screen offsets (`iSideOffsetLeft`, `iBottomOffset`).
+* **Widgets & Layout:** Pick the HUD theme (`sHudTheme`: `Daedric Iron` by default, or `Minimalist`), toggle the weather/location widget (`bEnableWeatherWidget`), sneak light gem (`bEnableSneakLightGem`), customize screen offsets (`iSideOffsetLeft`, `iBottomOffset`) and the uniform HUD scale (`fHudScale`, 0.70 to 1.50, default 1.00).
 * **Poise Displays:** Control player and target poise bars (`bShowPoiseBar`, `bShowTargetPoiseBar`), numerical values (`bShowPoiseNumbers`), debuff icons (`bShowPoiseDebuffIcons`), reactive status tinting (`bShowReactiveBarEffects`), and live telemetry (`bShowPoiseTelemetry`).
 * **Visibility & Fading:** Configure dynamic fading (`bDynamicHUD`, `bAlwaysOn`), idle opacity (`fIdleOpacity`), and fade delay (`fFadeDelaySeconds`).
 

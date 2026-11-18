@@ -1,4 +1,5 @@
 #include "menu_framework.h"
+#include <algorithm>
 #include <filesystem>
 #include <map>
 #include <chrono>
@@ -33,6 +34,8 @@ namespace {
 namespace menu_exports {
 	bool* get_enableWeatherWidget();
 	bool* get_enableSneakLightGem();
+	int* get_hudTheme();
+	float* get_hudScale();
 	int* get_sideOffsetLeft();
 	int* get_bottomOffset();
 	bool* get_showPoiseBar();
@@ -76,7 +79,6 @@ namespace menu_exports {
 	float* get_summonPoiseMultiplier();
 	float* get_npcMagicPoiseMultiplier();
 	bool* get_showTargetPoiseBar();
-	bool* get_showPoiseTelemetry();
 	bool* get_showPoiseDebuffIcons();
 	bool* get_showReactiveBarEffects();
 	bool* get_enablePoiseDebuffs();
@@ -97,6 +99,9 @@ namespace menu_exports {
 	float* get_regenRatePerSecond();
 	float* get_staggerImmunitySeconds();
 	float* get_wardMagicDamageMultiplier();
+	float* get_clothingMagicPoiseMultiplier();
+	float* get_lightArmorMagicPoiseMultiplier();
+	float* get_heavyArmorMagicPoiseMultiplier();
 	float* get_physicalDamagePoiseMultiplier();
 	float* get_physicalDamagePoiseCap();
 	float* get_lightArmorRatingPoiseMultiplier();
@@ -142,10 +147,25 @@ namespace MenuFramework
 				SendSettingsToHudImpl("iBottomOffset");
 			}
 
+			auto* hudScale = ::menu_exports::get_hudScale();
+			if (ImGuiMCP::SliderFloat("HUD Scale##layout", hudScale, 0.70f, 1.50f, "%.2f")) {
+				*hudScale = std::clamp(std::round(*hudScale * 20.0f) / 20.0f, 0.70f, 1.50f);
+				g_iniDirty = true;
+				g_lastSliderChangeTime = std::chrono::steady_clock::now();
+				QueueIniWrite("fHudScale", FloatToString(*hudScale), "HUD");
+				SendSettingsToHudImpl("fHudScale");
+			}
+
 		}
 
 		// ===== SECTION 2: Widget Visibility & Display =====
 		if (ImGuiMCP::CollapsingHeader("Widget Visibility & Display")) {
+			auto* hudTheme = ::menu_exports::get_hudTheme();
+			if (ImGuiMCP::Combo("HUD Theme##widgets", hudTheme, "Daedric Iron\0Minimalist\0")) {
+				QueueIniWrite("sHudTheme", *hudTheme == 1 ? "Minimalist" : "Daedric Iron", "HUD");
+				SendSettingsToHudImpl("sHudTheme");
+			}
+
 			auto* enableWeatherWidget = ::menu_exports::get_enableWeatherWidget();
 			if (ImGuiMCP::Checkbox("Enable Weather Widget##widgets", enableWeatherWidget)) {
 				if (ImGuiMCP::IsItemDeactivatedAfterEdit()) {
@@ -183,13 +203,6 @@ namespace MenuFramework
 				const char* val = *showTargetPoiseBar ? "true" : "false";
 				QueueIniWrite("bShowTargetPoiseBar", val, "HUD");
 				SendSettingsToHudImpl("bShowTargetPoiseBar");
-			}
-
-			auto* showPoiseTelemetry = ::menu_exports::get_showPoiseTelemetry();
-			if (ImGuiMCP::Checkbox("Show Live Poise Telemetry (Dev)##widgets", showPoiseTelemetry)) {
-				const char* val = *showPoiseTelemetry ? "true" : "false";
-				QueueIniWrite("bShowPoiseTelemetry", val, "HUD");
-				SendSettingsToHudImpl("bShowPoiseTelemetry");
 			}
 
 			auto* showPoiseDebuffIcons = ::menu_exports::get_showPoiseDebuffIcons();
@@ -408,7 +421,7 @@ namespace MenuFramework
 			}
 
 			auto* weaponWeightDamMult = ::menu_exports::get_weaponWeightDamageMultiplier();
-			if (ImGuiMCP::SliderFloat("Weapon Weight Damage Mult##poise", weaponWeightDamMult, 0.0f, 5.0f, "%.2f")) {
+			if (ImGuiMCP::SliderFloat("Weapon Weight Damage Mult##poise", weaponWeightDamMult, 0.0f, 5.0f, "%.3f")) {
 				g_iniDirty = true;
 				g_lastSliderChangeTime = std::chrono::steady_clock::now();
 				QueueIniWrite("fWeaponWeightDamageMultiplier", FloatToString(*weaponWeightDamMult), "Poise");
@@ -633,6 +646,30 @@ namespace MenuFramework
 				g_lastSliderChangeTime = std::chrono::steady_clock::now();
 				QueueIniWrite("fWardMagicDamageMultiplier", FloatToString(*wardMagicMult), "Poise");
 				SendSettingsToHudImpl("fWardMagicDamageMultiplier");
+			}
+
+			auto* clothingMagicPoise = ::menu_exports::get_clothingMagicPoiseMultiplier();
+			if (ImGuiMCP::SliderFloat("Clothing Magic Poise Mult##poise", clothingMagicPoise, 0.0f, 3.0f, "%.2f")) {
+				g_iniDirty = true;
+				g_lastSliderChangeTime = std::chrono::steady_clock::now();
+				QueueIniWrite("fClothingMagicPoiseMultiplier", FloatToString(*clothingMagicPoise), "Poise");
+				SendSettingsToHudImpl("fClothingMagicPoiseMultiplier");
+			}
+
+			auto* lightArmorMagicPoise = ::menu_exports::get_lightArmorMagicPoiseMultiplier();
+			if (ImGuiMCP::SliderFloat("Light Armor Magic Poise Mult##poise", lightArmorMagicPoise, 0.0f, 3.0f, "%.2f")) {
+				g_iniDirty = true;
+				g_lastSliderChangeTime = std::chrono::steady_clock::now();
+				QueueIniWrite("fLightArmorMagicPoiseMultiplier", FloatToString(*lightArmorMagicPoise), "Poise");
+				SendSettingsToHudImpl("fLightArmorMagicPoiseMultiplier");
+			}
+
+			auto* heavyArmorMagicPoise = ::menu_exports::get_heavyArmorMagicPoiseMultiplier();
+			if (ImGuiMCP::SliderFloat("Heavy Armor Magic Poise Mult##poise", heavyArmorMagicPoise, 0.0f, 3.0f, "%.2f")) {
+				g_iniDirty = true;
+				g_lastSliderChangeTime = std::chrono::steady_clock::now();
+				QueueIniWrite("fHeavyArmorMagicPoiseMultiplier", FloatToString(*heavyArmorMagicPoise), "Poise");
+				SendSettingsToHudImpl("fHeavyArmorMagicPoiseMultiplier");
 			}
 
 			auto* shieldBlockedMagic = ::menu_exports::get_shieldBlockedMagicMultiplier();
@@ -969,6 +1006,8 @@ namespace MenuFramework
 			// (externally defined in main.cpp - will be read during reload)
 			QueueIniWrite("bEnableWeatherWidget", "true", "HUD");
 			QueueIniWrite("bEnableSneakLightGem", "true", "HUD");
+			QueueIniWrite("sHudTheme", "Daedric Iron", "HUD");
+			QueueIniWrite("fHudScale", "1.00", "HUD");
 			QueueIniWrite("iSideOffsetLeft", "20", "HUD");
 			QueueIniWrite("iBottomOffset", "16", "HUD");
 			QueueIniWrite("bShowPoiseBar", "true", "HUD");
@@ -1028,8 +1067,8 @@ namespace MenuFramework
 			QueueIniWrite("fArmorWeightMultiplier", "1.0", "Poise");
 			QueueIniWrite("fShieldWeightPoiseMultiplier", "0.0", "Poise");
 			QueueIniWrite("bApplyShieldWeightToNPCs", "true", "Poise");
-			QueueIniWrite("fBaseHitPoiseDamage", "8.0", "Poise");
-			QueueIniWrite("fWeaponWeightDamageMultiplier", "0.5", "Poise");
+			QueueIniWrite("fBaseHitPoiseDamage", "6.0", "Poise");
+			QueueIniWrite("fWeaponWeightDamageMultiplier", "0.375", "Poise");
 			QueueIniWrite("fTwoHandedMultiplier", "0.85", "Poise");
 			QueueIniWrite("fShieldBashMultiplier", "1.0", "Poise");
 			QueueIniWrite("fWeaponBashMultiplier", "0.35", "Poise");
@@ -1050,7 +1089,10 @@ namespace MenuFramework
 			QueueIniWrite("fHeavyArmorFleshMultiplier", "0.45", "Poise");
 			QueueIniWrite("fFleshSpellPoiseMultiplier", "0.45", "Poise");
 			QueueIniWrite("fDragonhidePoiseBonus", "60.0", "Poise");
-			QueueIniWrite("fMagicBurstPoiseMultiplier", "2.0", "Poise");
+			QueueIniWrite("fMagicBurstPoiseMultiplier", "1.2", "Poise");
+			QueueIniWrite("fClothingMagicPoiseMultiplier", "0.70", "Poise");
+			QueueIniWrite("fLightArmorMagicPoiseMultiplier", "1.00", "Poise");
+			QueueIniWrite("fHeavyArmorMagicPoiseMultiplier", "1.15", "Poise");
 			QueueIniWrite("fMagicStaggerPoiseMultiplier", "10.0", "Poise");
 			QueueIniWrite("fConcentrationPoiseMultiplier", "1.0", "Poise");
 			QueueIniWrite("fConcentrationIntervalSeconds", "1.0", "Poise");

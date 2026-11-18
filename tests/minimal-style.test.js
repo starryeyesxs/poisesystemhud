@@ -66,3 +66,39 @@ test('every Poise debuff fill color is still defined at the slimmer bar height a
     assert.equal((html.match(/class="min-row/g) || []).length, 4);
     assert.equal((js.match(/setInterval\(/g) || []).length, 1);
 });
+
+test('Daedric Iron art matches the prototype and the Minimalist rules stay untouched underneath', () => {
+    for (const id of ['ironGrad', 'silverBevel', 'spearBlade']) assert.match(html, new RegExp(`<linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1">`));
+    assert.match(html, /<stop offset="48%" stop-color="#8b909c" \/>/);
+    assert.match(html, /<div id="minimal-layout" class="theme-daedric" hidden>/);
+    assert.match(html, /<svg class="dd-crest" viewBox="0 0 68 68"/);
+    assert.match(html, /<path fill-rule="evenodd" d="M34,8 L60,34 L34,60 L8,34 Z M34,17 L51,34 L34,51 L17,34 Z" fill="url\(#ironGrad\)"/);
+    assert.match(html, /<div id="daedric-light-gem" class="light-gem-core"/);
+    assert.match(html, /id="light-gem"/);
+    assert.match(css, /\.light-gem-core \{[^}]*width: 23px; height: 23px;[^}]*rotate\(45deg\);[^}]*radial-gradient\(circle, #f7e4a3 0%, #c89d3c 65%, #5c4314 100%\)/);
+    // Scaled about 15% from the prototype: 24 -> 28px bars, 26 -> 30px caps, 96x24 -> 112x28 sigil, 68 -> 78px crest.
+    assert.match(css, /\.theme-daedric #min-emblem \{ width: 78px; height: 78px;/);
+    assert.match(css, /#min-stamina, #minimal-layout\.theme-daedric #min-poise \{ --bar-h: 28px; \}/);
+    assert.match(css, /\.dd-cap \{ width: 30px; height: 28px; flex: none;/);
+    assert.match(css, /\.dd-mid \{[^}]*height: 28px;/);
+    assert.match(css, /\.dd-sigil \{[^}]*width: 112px; height: 28px;/);
+    assert.match(css, /\.theme-daedric \.min-track \{[^}]*left: 23px; right: 23px; top: 6px; bottom: 6px;/);
+    // The light core still fits inside the crest's inner cutout (half-diagonal 17 of 68, scaled to the 78px crest).
+    assert.ok(23 * Math.SQRT2 / 2 < 17 * 78 / 68);
+    // Etched runes on the crest, caps and sigils are brightened for daylight backgrounds.
+    assert.match(html, /<g stroke="#cfd5e0" stroke-width="0\.9" fill="none" stroke-linecap="round" opacity="0\.95">/);
+    assert.match(js, /stroke="#cfd5e0" stroke-width="0\.8" opacity="0\.95"/);
+    assert.match(js, /<g stroke="#cfd5e0" stroke-width="0\.85" fill="none" stroke-linecap="round" opacity="0\.95">/);
+    assert.doesNotMatch(html + js, /#9ca3b0|#a5acb8/);
+    // Daedric-only elements are hidden unless the Daedric theme class is on, so Minimalist keeps its own look.
+    assert.match(css, /#minimal-layout \.dd-crest, #minimal-layout \.dd-frame, #minimal-layout \.light-gem-core \{ display: none; \}/);
+    // Every Daedric selector is scoped to .theme-daedric so Minimalist rules are unaffected.
+    const daedric = css.slice(css.indexOf('/* Daedric Iron theme'), css.indexOf('/* Reactive resource bars.'));
+    for (const selector of daedric.split('{').slice(0, -1).map(part => part.split('}').pop().trim()).filter(s => s && !s.startsWith('/*') && !s.startsWith('@') && !/^\d|^0%/.test(s))) {
+        for (const part of selector.split(',')) assert.match(part.trim(), /theme-daedric|dd-crest|dd-frame|light-gem-core/, part);
+    }
+    // The shared minimalist structure and reactive hooks remain: the frame overlay is added to, not swapped for, the bars.
+    assert.match(js, /<div class="min-track"><div class="min-layer min-trail min-\$\{key\}"><\/div>/);
+    assert.match(css, /#minimal-layout #min-health\.health-poison \.min-health \{ --c1: #7ab82e;/);
+    assert.match(css, /#minimal-layout\.show-notches \.min-track::after \{ display: block; \}/);
+});

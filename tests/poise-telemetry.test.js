@@ -223,16 +223,15 @@ test('the overlay is a separate fixed, click-through block that does not touch t
     assert.equal((js.match(/setInterval\(/g) || []).length, 1);
 });
 
-test('bShowPoiseTelemetry is shipped off, loaded, exported, in the menu, reset and applied on reload', () => {
+test('bShowPoiseTelemetry is shipped off, loaded, reset and applied on reload, with no menu option', () => {
     const ini = read('poisesystemhud.ini'), main = read('src/main.cpp'), menu = read('src/menu_framework.cpp');
     assert.match(ini.split('[Poise]')[0], /^bShowPoiseTelemetry=false$/m);
     assert.match(main, /bool showPoiseTelemetry = false;/);
     assert.match(main, /readBool\(L"bShowPoiseTelemetry", "bShowPoiseTelemetry", settings\.showPoiseTelemetry\)/);
-    assert.match(main, /get_showPoiseTelemetry\(\) \{ return &settings\.showPoiseTelemetry; \}/);
     assert.match(main, /BuiltinPoise::Configure\(poiseSettings\);\s*BuiltinPoise::SetTelemetryEnabled\(settings\.showPoiseTelemetry\);/);
-    const widgets = menu.slice(menu.indexOf('CollapsingHeader("Widget Visibility & Display")'), menu.indexOf('CollapsingHeader("Dynamic Visibility & Opacity")'));
-    assert.match(widgets, /Checkbox\("Show Live Poise Telemetry \(Dev\)##widgets", showPoiseTelemetry\)/);
-    assert.match(widgets, /QueueIniWrite\("bShowPoiseTelemetry", val, "HUD"\);\s*SendSettingsToHudImpl\("bShowPoiseTelemetry"\)/);
+    // Regular players do not see the dev overlay in the menu; the showpoisedev console command and the INI remain.
+    assert.doesNotMatch(menu, /Poise Telemetry|get_showPoiseTelemetry|SendSettingsToHudImpl\("bShowPoiseTelemetry"\)/);
+    assert.doesNotMatch(main, /get_showPoiseTelemetry/);
     assert.match(menu, /QueueIniWrite\("bShowPoiseTelemetry", "false", "HUD"\)/);
     const apply = main.slice(main.indexOf('void SendSettingsToHudImpl('), main.indexOf('// Export settings for menu access'));
     assert.match(apply, /changedKey == "bShowPoiseTelemetry"\) \{\s*BuiltinPoise::SetTelemetryEnabled\(settings\.showPoiseTelemetry\);/);

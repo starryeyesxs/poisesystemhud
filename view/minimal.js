@@ -1,8 +1,11 @@
 const minimalState = {
     active: false, weatherEnabled: false, gemEnabled: false, combat: false, moving: false, debuffsVisible: false,
+    theme: 'daedric', light: { sneaking: false, level: null },
     stats: Object.fromEntries(['health', 'magicka', 'stamina', 'poise'].map(key =>
         [key, { current: 0, max: 0, trail: 0, hitAt: 0, initialized: false, enabled: key !== 'poise' }]))
 };
+
+const HUD_THEMES = ['daedric', 'minimalist'];
 
 const MIN_BAR_BASE_WIDTH = 200;
 const MIN_BAR_MAX_WIDTH = 480;
@@ -65,8 +68,32 @@ function configureLayouts(weatherEnabled, gemEnabled) {
     document.getElementById('minimal-layout').hidden = false;
     document.getElementById('world-widget').hidden = !weatherEnabled;
     document.getElementById('min-emblem').hidden = !(minimalState.active && gemEnabled);
-    if (!(minimalState.active && gemEnabled)) document.getElementById('light-gem').hidden = true;
+    if (!(minimalState.active && gemEnabled)) {
+        minimalState.light = { sneaking: false, level: null };
+        renderLightGem();
+    }
     if (minimalState.active) buildMinimalBars();
+}
+
+function configureHudTheme(theme) {
+    if (!HUD_THEMES.includes(theme)) {
+        console.error('Invalid HUD theme', theme);
+        return;
+    }
+    minimalState.theme = theme;
+    const layout = document.getElementById('minimal-layout');
+    layout.classList.toggle('theme-daedric', theme === 'daedric');
+    layout.classList.toggle('theme-minimalist', theme === 'minimalist');
+    renderLightGem();
+}
+
+// Scales the whole player cluster (bars, debuff icons and crest) uniformly from its bottom-left corner.
+function configureHudScale(scale) {
+    if (!Number.isFinite(scale) || scale < 0.7 || scale > 1.5) {
+        console.error('Invalid HUD scale', scale);
+        return;
+    }
+    document.getElementById('minimal-layout').style.setProperty('--hud-scale', String(scale));
 }
 
 function updateMinimalGraphics(filigree, shine, shadow, notches) {
@@ -87,6 +114,50 @@ function updateMinimalGraphics(filigree, shine, shadow, notches) {
     layout.style.setProperty('--min-inner-blur', `${2 * shadow}px`);
 }
 
+// Daedric Iron frame markup, copied from the approved prototype. The 26px spearhead caps keep a fixed size and the
+// middle rails use non-scaling strokes, so a wider or narrower bar never stretches the caps, rails or runes.
+function daedricCapMarkup(isRight) {
+    return [
+        `<svg class="dd-cap ${isRight ? 'right' : ''}" viewBox="0 0 26 24" aria-hidden="true">`,
+        `<polygon points="1,12 11,7.5 9.5,12 11,16.5" fill="url(#spearBlade)" stroke="#111" stroke-width="0.8"/>`,
+        `<path d="M26,2 L15,2 L9.5,12 L15,22 L26,22 L26,18.5 L17,18.5 L13.5,12 L17,5.5 L26,5.5 Z" fill="url(#ironGrad)" />`,
+        `<polyline points="26,2 15,2 9.5,12 15,22 26,22" fill="none" stroke="url(#silverBevel)" stroke-width="1"/>`,
+        `<polyline points="26,5.5 17,5.5 13.5,12 17,18.5 26,18.5" fill="none" stroke="url(#silverBevel)" stroke-width="0.9"/>`,
+        `<path d="M19,3.8 L22,3.8 M20.5,2.7 L20.5,4.8 M19,20.2 L22,20.2 M20.5,19.2 L20.5,21.3" stroke="#cfd5e0" stroke-width="0.8" opacity="0.95"/>`,
+        `</svg>`
+    ].join('');
+}
+
+function daedricFrameMarkup() {
+    return [
+        `<div class="dd-frame" aria-hidden="true">`,
+        daedricCapMarkup(false),
+        `<div class="dd-mid">`,
+        `<svg class="dd-mid-svg" viewBox="0 0 100 24" preserveAspectRatio="none">`,
+        `<rect x="0" y="2" width="100" height="3.5" fill="url(#ironGrad)" />`,
+        `<rect x="0" y="18.5" width="100" height="3.5" fill="url(#ironGrad)" />`,
+        `<line x1="0" y1="2" x2="100" y2="2" stroke="url(#silverBevel)" stroke-width="1" vector-effect="non-scaling-stroke"/>`,
+        `<line x1="0" y1="5.5" x2="100" y2="5.5" stroke="url(#silverBevel)" stroke-width="0.9" vector-effect="non-scaling-stroke"/>`,
+        `<line x1="0" y1="18.5" x2="100" y2="18.5" stroke="url(#silverBevel)" stroke-width="0.9" vector-effect="non-scaling-stroke"/>`,
+        `<line x1="0" y1="22" x2="100" y2="22" stroke="url(#silverBevel)" stroke-width="1" vector-effect="non-scaling-stroke"/>`,
+        `</svg>`,
+        `<svg class="dd-sigil" viewBox="0 0 96 24">`,
+        `<path d="M40,3.8 Q48,0.5 56,3.8 Q48,7.1 40,3.8 Z" fill="#1b1c20" stroke="url(#silverBevel)" stroke-width="0.85"/>`,
+        `<ellipse cx="48" cy="3.8" rx="1.2" ry="2.2" fill="#c9cdd6"/>`,
+        `<g stroke="#cfd5e0" stroke-width="0.85" fill="none" stroke-linecap="round" opacity="0.95">`,
+        `<path d="M12,2.6 L12,5 M12,3.6 L14.5,2.6 M18,5 L18,2.6 L20.5,4.8 M24,2.6 L26,3.8 L24,5 M30,2.6 L30,5 M30,3.8 L32.5,3.8" />`,
+        `<path d="M63.5,3.8 L66,3.8 M66,2.6 L66,5 M72,2.6 L70,3.8 L72,5 M75.5,4.8 L78,2.6 L78,5 M81.5,2.6 L84,3.6 M84,2.6 L84,5" />`,
+        `<path d="M14,19.2 L14,21.4 M12.5,20.3 L15.5,20.3 M20,19.2 L22,21.4 M22,19.2 L20,21.4 M27,19.2 L27,21.4 L29.5,20.3" />`,
+        `<path d="M43,20.3 L48,18.6 L53,20.3 L48,22 Z" stroke="url(#silverBevel)" stroke-width="0.8"/>`,
+        `<path d="M66.5,20.3 L69,21.4 L69,19.2 M74,19.2 L76,21.4 M76,19.2 L74,21.4 M80.5,20.3 L83.5,20.3 M82,19.2 L82,21.4" />`,
+        `</g>`,
+        `</svg>`,
+        `</div>`,
+        daedricCapMarkup(true),
+        `</div>`
+    ].join('');
+}
+
 function buildMinimalBars() {
     document.querySelectorAll('#minimal-bars .min-row').forEach(row => {
         const key = row.dataset.stat;
@@ -96,6 +167,7 @@ function buildMinimalBars() {
             `<div class="min-track"><div class="min-layer min-trail min-${key}"></div>` +
             `<div class="min-layer min-fill min-${key}"></div></div>` +
             `<svg class="min-cap"><use href="#${cap}-right"></use></svg>` +
+            daedricFrameMarkup() +
             (key === 'poise' ? '<span id="min-poise-numbers" hidden></span>' : '');
     });
 }
@@ -108,7 +180,8 @@ function resetMinimal() {
         Object.assign(stat, { current: 0, max: 0, trail: 0, hitAt: 0, initialized: false, enabled: false });
         renderMinimalStat(key);
     }
-    document.getElementById('light-gem').hidden = true;
+    minimalState.light = { sneaking: false, level: null };
+    renderLightGem();
     document.getElementById('min-poise-numbers').hidden = true;
     refreshVisibility(true);
 }
@@ -234,9 +307,27 @@ function updateLightGem(isSneaking, lightLevel) {
     if (typeof isSneaking !== 'boolean' || (lightLevel !== null && (!Number.isFinite(lightLevel) || lightLevel < 0 || lightLevel > 100))) {
         console.error('Invalid light telemetry', isSneaking, lightLevel); return;
     }
+    minimalState.light = { sneaking: isSneaking, level: lightLevel };
+    renderLightGem();
+}
+
+// Drives the light gem of the active theme from the last light telemetry and hides the other theme's gem.
+function renderLightGem() {
+    const { sneaking, level } = minimalState.light;
+    const visible = minimalState.active && minimalState.gemEnabled && sneaking && level !== null;
     const gem = document.getElementById('light-gem');
-    gem.hidden = !isSneaking || lightLevel === null;
-    if (gem.hidden) return;
+    const core = document.getElementById('daedric-light-gem');
+    gem.hidden = !(visible && minimalState.theme === 'minimalist');
+    core.hidden = !(visible && minimalState.theme === 'daedric');
+    if (!visible) return;
+    const lightLevel = level;
+    if (minimalState.theme === 'daedric') {
+        const b = lightLevel / 100;
+        core.setAttribute('aria-label', `Light level: ${lightLevel} out of 100`);
+        core.style.opacity = String(0.25 + b * 0.75);
+        core.style.boxShadow = `0 0 ${Math.round(b * 16)}px rgba(240, 198, 92, ${0.2 + b * 0.75})`;
+        return;
+    }
     const stops = [{ level: 0, color: [52,54,55] }, { level: 25, color: [72,65,57] },
         { level: 60, color: [216,155,64] }, { level: 100, color: [255,244,197] }];
     const index = Math.max(1, stops.findIndex(stop => lightLevel <= stop.level));

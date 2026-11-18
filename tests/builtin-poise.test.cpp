@@ -29,7 +29,8 @@ int main()
 	hit.blocked = true;
 	auto result = state.Apply(settings, hit);
 	assert(result.handled && !result.broke);
-	assert(Near(state.current, 100.0F - 18.0F * 0.85F * 1.5F * 2.5F * 0.45F));
+	assert(Near(settings.baseHitDamage, 6.0F) && Near(settings.weaponWeightDamageMultiplier, 0.375F));
+	assert(Near(state.current, 100.0F - 13.5F * 0.85F * 1.5F * 2.5F * 0.45F));
 	state.Advance(settings, 2.0F);
 	const float beforeRegen = state.current;
 	state.Advance(settings, 1.5F);
@@ -46,7 +47,7 @@ int main()
 		sample.Apply(settings, input);
 		const float multiplier = type == HitType::bash ? 0.35F :
 			type == HitType::creature ? 0.8F : type == HitType::projectile ? 0.8F : 1.0F;
-		assert(Near(sample.current, 100.0F - 8.0F * multiplier * settings.unblockedPhysicalMultiplier));
+		assert(Near(sample.current, 100.0F - 6.0F * multiplier * settings.unblockedPhysicalMultiplier));
 	}
 	// A shield bash is a full-strength posture hit; a weapon pommel bash is a light tap.
 	State shieldBashed;
@@ -55,12 +56,12 @@ int main()
 	shieldBash.type = HitType::bash;
 	shieldBash.shieldBash = true;
 	shieldBashed.Apply(settings, shieldBash);
-	assert(Near(100.0F - shieldBashed.current, 8.0F * 1.0F * 2.5F));
+	assert(Near(100.0F - shieldBashed.current, 6.0F * 1.0F * 2.5F));
 	State pommelBashed;
 	pommelBashed.SetMaximum(100.0F);
 	shieldBash.shieldBash = false;
 	pommelBashed.Apply(settings, shieldBash);
-	assert(Near(100.0F - pommelBashed.current, 8.0F * 0.35F * 2.5F));
+	assert(Near(100.0F - pommelBashed.current, 6.0F * 0.35F * 2.5F));
 	assert(Near(settings.shieldBlockedMagicMultiplier, 0.4F) && Near(settings.weaponBlockedMagicMultiplier, 0.7F));
 	assert(!settings.allowTimedBashStaggers);
 	State physical;
@@ -68,16 +69,16 @@ int main()
 	Hit sword;
 	sword.weaponWeight = 10.0F;
 	assert(physical.Apply(settings, sword).handled);
-	assert(Near(physical.current, 7.5F));
+	assert(Near(physical.current, 40.0F - 9.75F * 2.5F));
 	physical.SetMaximum(40.0F);
 	physical.current = 40.0F;
 	sword.blocked = true;
 	assert(physical.Apply(settings, sword).handled);
-	assert(Near(physical.current, 40.0F - 13.0F * 2.5F * 0.45F));
+	assert(Near(physical.current, 40.0F - 9.75F * 2.5F * 0.45F));
 	physical.current = 40.0F;
 	sword.shieldBlocked = true;
 	assert(physical.Apply(settings, sword).handled);
-	assert(Near(physical.current, 40.0F - 13.0F * 2.5F * 0.25F));
+	assert(Near(physical.current, 40.0F - 9.75F * 2.5F * 0.25F));
 
 	State magic;
 	magic.SetMaximum(40.0F);
@@ -176,7 +177,7 @@ int main()
 	wolf.SetMaximum(30.0F);
 	wolf.ApplyTier(follow, CreatureTier::Light);
 	Hit heavyHit;
-	heavyHit.weaponWeight = 16.0F;
+	heavyHit.weaponWeight = 24.0F;
 	heavyHit.twoHanded = true;
 	assert(wolf.Apply(follow, heavyHit).broke);
 	assert(Near(wolf.immunity, 2.0F));
@@ -206,7 +207,7 @@ int main()
 	for (const auto neutral : { CreatureTier::Unknown, CreatureTier::Standard, CreatureTier::Excluded }) {
 		assert(Near(CreatureDamageTierMultiplier(damage, neutral), 1.0F));
 	}
-	const float expectedUnblocked[] = { 9.6F, 19.2F, 22.0F, 36.0F };
+	const float expectedUnblocked[] = { 7.2F, 14.4F, 16.5F, 27.0F };
 	const CreatureTier attackers[] = { CreatureTier::Light, CreatureTier::Medium, CreatureTier::Heavy, CreatureTier::Boss };
 	for (int i = 0; i < 4; ++i) {
 		State victim;
@@ -218,7 +219,7 @@ int main()
 		assert(Near(1000.0F - victim.current, expectedUnblocked[i]));
 	}
 
-	// A blocked hit is a share of the unblocked hit: a boss slam bleeds 9.0 through a shield and 16.2 through a weapon block.
+	// A blocked hit is a share of the unblocked hit: a boss slam bleeds 6.75 through a shield and 12.15 through a weapon block.
 	State shielded;
 	shielded.SetMaximum(1000.0F);
 	Hit slam;
@@ -227,17 +228,17 @@ int main()
 	slam.blocked = true;
 	slam.shieldBlocked = true;
 	shielded.Apply(damage, slam);
-	assert(Near(1000.0F - shielded.current, 9.0F));
+	assert(Near(1000.0F - shielded.current, 6.75F));
 	State weaponBlocked;
 	weaponBlocked.SetMaximum(1000.0F);
 	slam.shieldBlocked = false;
 	weaponBlocked.Apply(damage, slam);
-	assert(Near(1000.0F - weaponBlocked.current, 16.2F));
+	assert(Near(1000.0F - weaponBlocked.current, 12.15F));
 	State openSlam;
 	openSlam.SetMaximum(1000.0F);
 	slam.blocked = false;
 	openSlam.Apply(damage, slam);
-	assert(Near(1000.0F - openSlam.current, 36.0F));
+	assert(Near(1000.0F - openSlam.current, 27.0F));
 	assert(1000.0F - shielded.current < 1000.0F - weaponBlocked.current &&
 		1000.0F - weaponBlocked.current < 1000.0F - openSlam.current);
 	slam.blocked = true;
@@ -286,7 +287,7 @@ int main()
 	stab.physicalDamage = 60.0F;
 	auto stabResult = sneaky.Apply(baseline, stab);
 	assert(stabResult.handled && Near(stabResult.rawBonus, 3.0F) && !stabResult.rawCapped);
-	assert(Near(1000.0F - sneaky.current, (8.0F + 5.0F + 3.0F) * 2.5F));
+	assert(Near(1000.0F - sneaky.current, (6.0F + 3.75F + 3.0F) * 2.5F));
 	assert(Near(sneaky.lastRawBonus, 3.0F) && !sneaky.lastRawCapped);
 	stab.type = HitType::creature;
 	stab.attackerTier = CreatureTier::Boss;
@@ -297,7 +298,29 @@ int main()
 	slammed.SetMaximum(1000.0F);
 	auto slamResult = slammed.Apply(baseline, stab);
 	assert(slamResult.rawCapped && Near(slamResult.rawBonus, 6.0F));
-	assert(Near(1000.0F - slammed.current, (8.0F + 5.0F + 6.0F) * 0.8F * 2.25F * 1.5F * 2.5F * 0.45F));
+	assert(Near(1000.0F - slammed.current, (6.0F + 3.75F + 6.0F) * 0.8F * 2.25F * 1.5F * 2.5F * 0.45F));
+	// A shield block drops the raw weapon damage bonus; weapon-only blocks and open hits keep it.
+	stab.shieldBlocked = true;
+	State shieldSlammed;
+	shieldSlammed.SetMaximum(1000.0F);
+	auto shieldSlamResult = shieldSlammed.Apply(baseline, stab);
+	assert(shieldSlamResult.handled && Near(shieldSlamResult.rawBonus, 0.0F) && !shieldSlamResult.rawCapped);
+	assert(Near(shieldSlammed.lastRawBonus, 0.0F) && !shieldSlammed.lastRawCapped);
+	assert(Near(1000.0F - shieldSlammed.current, (6.0F + 3.75F) * 0.8F * 2.25F * 1.5F * 2.5F * 0.25F));
+	Hit shieldBreakdownHit = stab;
+	HitBreakdown shieldBreakdown;
+	State shieldExplained;
+	shieldExplained.SetMaximum(1000.0F);
+	shieldExplained.Apply(baseline, shieldBreakdownHit, &shieldBreakdown);
+	assert(Near(shieldBreakdown.rawBonus, 0.0F) && !shieldBreakdown.rawCapped);
+	assert(Near(shieldBreakdown.baseDamage, 6.0F + 3.75F));
+	// A stale shield flag on an unblocked hit must not remove the bonus.
+	stab.blocked = false;
+	State shieldFlagOnly;
+	shieldFlagOnly.SetMaximum(1000.0F);
+	assert(Near(shieldFlagOnly.Apply(baseline, stab).rawBonus, 6.0F));
+	stab.blocked = true;
+	stab.shieldBlocked = false;
 	// Telemetry still reports the bonus while stagger immunity absorbs the hit.
 	State immune;
 	immune.SetMaximum(10.0F);
@@ -313,7 +336,7 @@ int main()
 	State legacyState;
 	legacyState.SetMaximum(100.0F);
 	assert(Near(legacyState.Apply(baseline, legacy).rawBonus, 0.0F));
-	assert(Near(100.0F - legacyState.current, 13.0F * 2.5F));
+	assert(Near(100.0F - legacyState.current, 9.75F * 2.5F));
 
 	// Light Armor rating bonus is raw-rating based, capped, and clamped at its own bounds.
 	assert(Near(LightArmorTierBonus(baseline, 0.0F), 0.0F));

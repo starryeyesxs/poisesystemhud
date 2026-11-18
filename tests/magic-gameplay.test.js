@@ -8,6 +8,7 @@ const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 const magic = read('src/magic_gameplay.cpp');
 const poise = read('src/builtin_poise.cpp');
 const main = read('src/main.cpp');
+const menu = read('src/menu_framework.cpp');
 const ini = read('poisesystemhud.ini');
 const build = read('xmake.lua');
 
@@ -18,7 +19,10 @@ test('candidate has the requested settings and isolated package target', () => {
         fWardMagicDamageMultiplier: '0.35',
         fShieldBlockedMagicMultiplier: '0.4',
         fWeaponBlockedMagicMultiplier: '0.7',
-        fMagicBurstPoiseMultiplier: '2.0',
+        fMagicBurstPoiseMultiplier: '1.20',
+        fClothingMagicPoiseMultiplier: '0.70',
+        fLightArmorMagicPoiseMultiplier: '1.00',
+        fHeavyArmorMagicPoiseMultiplier: '1.15',
         fMagicStaggerPoiseMultiplier: '10.0',
         fConcentrationPoiseMultiplier: '1.0',
         fConcentrationIntervalSeconds: '1.0',
@@ -67,6 +71,15 @@ test('magic deduplication is projectile and target scoped; concentration is pool
     assert.match(magic, /damage\.Advance\(delta, settings\.concentrationMaxPoisePerInterval\)/);
     assert.match(magic, /BuiltinPoise::IsGenerationActive\(impact\.generation\)/);
     assert.match(magic, /input\.wardIntercepted = impact\.ward/);
+    assert.match(magic, /input\.magicBurst = !impact\.concentration/);
+    assert.match(magic, /impact\.projectileless && !impact\.concentration &&\s*impact\.magnitude < kMinimumProjectilelessBurstMagnitude/);
+    assert.match(poise, /MagicArmorPoiseScale\(configuration, armor\)/);
+    assert.match(poise, /damage \*= armorScale\.multiplier;\s*if \(!std::isfinite\(damage\) \|\| damage <= 0\.0F\)/);
+    for (const key of ['fClothingMagicPoiseMultiplier', 'fLightArmorMagicPoiseMultiplier', 'fHeavyArmorMagicPoiseMultiplier']) {
+        assert.match(main, new RegExp(`L"${key}"`));
+        assert.match(menu, new RegExp(`QueueIniWrite\\("${key}"`));
+    }
+    assert.match(poise, /record\.Add\(armorScale\.label, armorScale\.multiplier\)/);
 });
 
 test('flesh bonus ignores inactive effects and physical damage has no ward multiplier', () => {

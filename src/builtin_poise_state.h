@@ -21,8 +21,8 @@ namespace BuiltinPoise
 		float armorWeightMultiplier = 1.0F;
 		float shieldWeightPoiseMultiplier = 0.0F;
 		bool applyShieldWeightToNPCs = true;
-		float baseHitDamage = 8.0F;
-		float weaponWeightDamageMultiplier = 0.5F;
+		float baseHitDamage = 6.0F;
+		float weaponWeightDamageMultiplier = 0.375F;
 		float twoHandedMultiplier = 0.85F;
 		float shieldBashMultiplier = 1.0F;
 		float weaponBashMultiplier = 0.35F;
@@ -37,11 +37,14 @@ namespace BuiltinPoise
 		float staggerImmunitySeconds = 1.0F;
 		float fleshSpellPoiseMultiplier = 0.45F;
 		float dragonhidePoiseBonus = 60.0F;
-		float magicBurstPoiseMultiplier = 2.0F;
+		float magicBurstPoiseMultiplier = 1.2F;
 		float magicStaggerPoiseMultiplier = 10.0F;
 		float concentrationPoiseMultiplier = 1.0F;
 		float concentrationIntervalSeconds = 1.0F;
 		float concentrationMaxPoisePerInterval = 15.0F;
+		float clothingMagicPoiseMultiplier = 0.70F;
+		float lightArmorMagicPoiseMultiplier = 1.00F;
+		float heavyArmorMagicPoiseMultiplier = 1.15F;
 		// Channeled spells (Flames, Frostbite, Sparks) keep their debuffs but deal no direct poise damage by default.
 		bool concentrationSpellsDealPoise = false;
 		float wardMagicDamageMultiplier = 0.35F;
@@ -325,6 +328,24 @@ namespace BuiltinPoise
 		bool hasHeavy = false;
 		bool hasLight = false;
 	};
+
+	struct ArmorMagicPoiseScale
+	{
+		const char* label = "Clothing Armor";
+		float multiplier = 1.0F;
+	};
+
+	[[nodiscard]] inline ArmorMagicPoiseScale MagicArmorPoiseScale(
+		const Settings& settings, const ArmorProfile& armor) noexcept
+	{
+		if (armor.hasHeavy) {
+			return { "Heavy Armor", settings.heavyArmorMagicPoiseMultiplier };
+		}
+		if (armor.hasLight) {
+			return { "Light Armor", settings.lightArmorMagicPoiseMultiplier };
+		}
+		return { "Clothing Armor", settings.clothingMagicPoiseMultiplier };
+	}
 
 	struct FleshRating
 	{
@@ -653,7 +674,9 @@ namespace BuiltinPoise
 				return {};
 			}
 			const float weight = std::isfinite(hit.weaponWeight) ? std::clamp(hit.weaponWeight, 0.0F, 1000.0F) : 0.0F;
-			const auto raw = PhysicalDamageBonus(settings, hit.physicalDamage);
+			// A shield-blocked hit never carries the attacker's raw weapon damage; weapon blocks and open hits do.
+			const bool shieldBlocked = hit.blocked && hit.shieldBlocked;
+			const auto raw = shieldBlocked ? PhysicalBonus{} : PhysicalDamageBonus(settings, hit.physicalDamage);
 			lastRawBonus = raw.bonus;
 			lastRawCapped = raw.capped;
 			float damage = settings.baseHitDamage + weight * settings.weaponWeightDamageMultiplier + raw.bonus;

@@ -18,10 +18,23 @@ namespace MagicPoise
 		float magicResistance = 0.0F;
 		float wardMultiplier = 1.0F;
 		bool wardIntercepted = false;
+		bool magicBurst = false;
 		// A channeled (kConcentration) spell deals no direct poise damage unless the setting allows it.
 		bool concentrationSpell = false;
 		bool concentrationAllowed = true;
 	};
+
+	inline float BurstMagnitudeDamage(float magnitude, float multiplier) noexcept
+	{
+		constexpr float softCapStartMagnitude = 40.0F;
+		constexpr float softCapSlope = 0.55F;
+		constexpr float softCapMaximum = 90.0F;
+		if (magnitude <= softCapStartMagnitude) {
+			return magnitude * multiplier;
+		}
+		return (std::min)(softCapMaximum,
+			softCapStartMagnitude * multiplier + (magnitude - softCapStartMagnitude) * softCapSlope);
+	}
 
 	inline float Damage(const DamageInput& input)
 	{
@@ -39,7 +52,10 @@ namespace MagicPoise
 		}
 		const float elemental = 1.0F - std::clamp(input.elementalResistance, -100.0F, 85.0F) / 100.0F;
 		const float magic = 1.0F - std::clamp(input.magicResistance, -100.0F, 85.0F) / 100.0F;
-		const float raw = input.magnitude * input.magnitudeMultiplier + input.stagger * input.staggerMultiplier;
+		const float magnitudeDamage = input.magicBurst ?
+			BurstMagnitudeDamage(input.magnitude, input.magnitudeMultiplier) :
+			input.magnitude * input.magnitudeMultiplier;
+		const float raw = magnitudeDamage + input.stagger * input.staggerMultiplier;
 		const float mitigation = input.wardIntercepted ? input.wardMultiplier : 1.0F;
 		const float damage = raw * elemental * magic * mitigation;
 		return std::isfinite(damage) ? damage : 0.0F;
@@ -57,7 +73,10 @@ namespace MagicPoise
 	inline Explanation Explain(const DamageInput& input)
 	{
 		Explanation result;
-		result.raw = input.magnitude * input.magnitudeMultiplier + input.stagger * input.staggerMultiplier;
+		const float magnitudeDamage = input.magicBurst ?
+			BurstMagnitudeDamage(input.magnitude, input.magnitudeMultiplier) :
+			input.magnitude * input.magnitudeMultiplier;
+		result.raw = magnitudeDamage + input.stagger * input.staggerMultiplier;
 		result.elemental = 1.0F - std::clamp(input.elementalResistance, -100.0F, 85.0F) / 100.0F;
 		result.magic = 1.0F - std::clamp(input.magicResistance, -100.0F, 85.0F) / 100.0F;
 		result.ward = input.wardIntercepted ? input.wardMultiplier : 1.0F;

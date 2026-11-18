@@ -1290,7 +1290,7 @@ void BuiltinPoise::ApplyMagicDamage(RE::Actor* target, RE::Actor* attacker, floa
 				it->second.poise.maximum <= 0.0F;
 		}
 	}
-	const auto armor = needsMaximum ? ScanArmor(target) : ArmorProfile{};
+	const auto armor = ScanArmor(target);
 	const auto flesh = needsMaximum ? ActiveFlesh(target) : FleshRating{};
 	const auto debuffs = ScanDebuffs(target);
 	const auto blockKind = wardMitigated ? BlockKind::none : CurrentBlock(target);
@@ -1313,6 +1313,14 @@ void BuiltinPoise::ApplyMagicDamage(RE::Actor* target, RE::Actor* attacker, floa
 		std::lock_guard lock(stateMutex);
 		if (!installed || !inGame || !configuration.enabled) {
 			return;
+		}
+		const auto armorScale = MagicArmorPoiseScale(configuration, armor);
+		damage *= armorScale.multiplier;
+		if (!std::isfinite(damage) || damage <= 0.0F) {
+			return;
+		}
+		if (recordHit) {
+			record.Add(armorScale.label, armorScale.multiplier);
 		}
 		const float blockScale = BlockedMagicScale(configuration, blockKind);
 		damage *= blockScale;

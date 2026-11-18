@@ -71,7 +71,8 @@ damage comes from impact spells: projectiles, beams and explosions. Their
 status debuffs still apply, so Flames still sets enemies Scorched and
 Frostbite still Numbs them. You can turn this on in the INI, in which case
 channeled spells deal capped poise damage once per second. Cloak effects
-work the same way.
+are also pooled and capped; non-channeled cloak effects are not controlled by
+the concentration spell switch.
 A ward that blocks a spell takes most of the poise damage (x0.35). Blocking
 with a shield or weapon also reduces it (x0.4 shield, x0.7 weapon), but a
 ward takes precedence rather than stacking with them. Wards cost no extra
@@ -143,9 +144,9 @@ fArmorWeightMultiplier=1.0        Maximum poise per unit of worn armor weight.
 fShieldWeightPoiseMultiplier=0.0 Player shield weight multiplier, range -1.0 to 2.0.
 bApplyShieldWeightToNPCs=true    NPCs use fArmorWeightMultiplier for shield weight when true;
                                  when false they use fShieldWeightPoiseMultiplier.
-fBaseHitPoiseDamage=8.0          Base physical hit poise damage.
-fWeaponWeightDamageMultiplier=0.5 Additional damage per weapon-weight unit.
-fPhysicalDamagePoiseMultiplier=0.05 Share of the hit's physical damage added to base damage.
+fBaseHitPoiseDamage=6.0          Base physical hit poise damage.
+fWeaponWeightDamageMultiplier=0.375 Additional damage per weapon-weight unit.
+fPhysicalDamagePoiseMultiplier=0.05 Share of the hit's physical damage added to base damage (not on shield-blocked hits).
 fPhysicalDamagePoiseCap=6.0      Hard cap on that physical-damage bonus.
 fTwoHandedMultiplier=0.85        Two-handed melee damage multiplier.
 fShieldBashMultiplier=1.0         Bash multiplier when a shield is equipped.
@@ -165,10 +166,18 @@ fLightArmorFleshMultiplier=0.75  Flesh spell and Dragonhide scale while wearing 
 fHeavyArmorFleshMultiplier=0.45  Same while wearing Heavy Armor; takes priority over Light.
 fFleshSpellPoiseMultiplier=0.45   Maximum poise per active Alteration armor point.
 fDragonhidePoiseBonus=60.0       Flat maximum poise bonus for Dragonhide.
-fMagicBurstPoiseMultiplier=2.0   Burst spell magnitude multiplier.
+fMagicBurstPoiseMultiplier=1.20  Burst spell magnitude multiplier through magnitude 40;
+                                 above that, raw burst damage rises by 0.55 per magnitude
+                                 point, capped at 90 (with the default multiplier).
+fClothingMagicPoiseMultiplier=0.70 Direct magic poise damage multiplier for clothing/unarmored targets.
+fLightArmorMagicPoiseMultiplier=1.00 Direct magic poise damage multiplier for Light Armor.
+fHeavyArmorMagicPoiseMultiplier=1.15 Direct magic poise damage multiplier for Heavy Armor.
+                                 Heavy Armor takes priority over Light; shields do not
+                                 set an armor class. Projectileless non-concentration
+                                 impacts below magnitude 8 deal no direct burst poise.
 fConcentrationPoiseMultiplier=1.0 Concentration spell magnitude multiplier.
-fConcentrationIntervalSeconds=1.0 Pooling interval for concentration spells (only if enabled).
-fConcentrationMaxPoisePerInterval=15.0 Maximum poise damage per interval (only if enabled).
+fConcentrationIntervalSeconds=1.0 Pooling interval for concentration spells and repeated cloak effects.
+fConcentrationMaxPoisePerInterval=15.0 Maximum pooled poise damage per interval.
 fWardMagicDamageMultiplier=0.35  Confirmed ward interception multiplier.
 fShieldBlockedMagicMultiplier=0.4 Magic poise multiplier while blocking with a shield.
 fWeaponBlockedMagicMultiplier=0.7 Magic poise multiplier while blocking with a weapon.
