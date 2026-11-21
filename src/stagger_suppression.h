@@ -10,8 +10,9 @@ namespace RE
 
 namespace StaggerSuppression
 {
-	// Installs the routine gate, the shout/Disarm whitelist and the ward-break event gate. Must run after BuiltinPoise::Install.
-	void Install();
+	// Installs the routine gate, the shout-aware StaggerEffect gate, the Disarm whitelist and the ward-break event gate.
+		// Must run after BuiltinPoise::Install.
+		void Install();
 
 	// Optional logging hook; called for every routine call after the suppression decision.
 	using RoutineObserver = void (*)(RE::Actor* target, float magnitude, RE::Actor* aggressor, const void* caller, bool suppressed);

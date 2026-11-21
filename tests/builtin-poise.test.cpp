@@ -16,7 +16,7 @@ int main()
 {
 	using namespace BuiltinPoise;
 	Settings settings;
-	assert(Near(settings.twoHandedMultiplier, 0.85F));
+	assert(Near(settings.twoHandedMultiplier, 1.15F));
 	assert(!settings.concentrationSpellsDealPoise);
 	State state;
 	Hit hit;
@@ -29,8 +29,8 @@ int main()
 	hit.blocked = true;
 	auto result = state.Apply(settings, hit);
 	assert(result.handled && !result.broke);
-	assert(Near(settings.baseHitDamage, 6.0F) && Near(settings.weaponWeightDamageMultiplier, 0.375F));
-	assert(Near(state.current, 100.0F - 13.5F * 0.85F * 1.5F * 2.5F * 0.45F));
+	assert(Near(settings.baseHitDamage, 6.0F) && Near(settings.weaponWeightDamageMultiplier, 0.35F));
+	assert(Near(state.current, 100.0F - 13.0F * 1.15F * 1.5F * 0.45F));
 	state.Advance(settings, 2.0F);
 	const float beforeRegen = state.current;
 	state.Advance(settings, 1.5F);
@@ -45,9 +45,10 @@ int main()
 		Hit input;
 		input.type = type;
 		sample.Apply(settings, input);
+		const float startingDamage = type == HitType::creature ? 5.5F : 6.0F;
 		const float multiplier = type == HitType::bash ? 0.35F :
-			type == HitType::creature ? 0.8F : type == HitType::projectile ? 0.8F : 1.0F;
-		assert(Near(sample.current, 100.0F - 6.0F * multiplier * settings.unblockedPhysicalMultiplier));
+			type == HitType::projectile ? 0.65F : 1.0F;
+		assert(Near(sample.current, 100.0F - startingDamage * multiplier));
 	}
 	// A shield bash is a full-strength posture hit; a weapon pommel bash is a light tap.
 	State shieldBashed;
@@ -56,12 +57,12 @@ int main()
 	shieldBash.type = HitType::bash;
 	shieldBash.shieldBash = true;
 	shieldBashed.Apply(settings, shieldBash);
-	assert(Near(100.0F - shieldBashed.current, 6.0F * 1.0F * 2.5F));
+	assert(Near(100.0F - shieldBashed.current, 6.0F));
 	State pommelBashed;
 	pommelBashed.SetMaximum(100.0F);
 	shieldBash.shieldBash = false;
 	pommelBashed.Apply(settings, shieldBash);
-	assert(Near(100.0F - pommelBashed.current, 6.0F * 0.35F * 2.5F));
+	assert(Near(100.0F - pommelBashed.current, 6.0F * 0.35F));
 	assert(Near(settings.shieldBlockedMagicMultiplier, 0.4F) && Near(settings.weaponBlockedMagicMultiplier, 0.7F));
 	assert(!settings.allowTimedBashStaggers);
 	State physical;
@@ -69,39 +70,42 @@ int main()
 	Hit sword;
 	sword.weaponWeight = 10.0F;
 	assert(physical.Apply(settings, sword).handled);
-	assert(Near(physical.current, 40.0F - 9.75F * 2.5F));
+	assert(Near(physical.current, 40.0F - 9.5F));
 	physical.SetMaximum(40.0F);
 	physical.current = 40.0F;
 	sword.blocked = true;
 	assert(physical.Apply(settings, sword).handled);
-	assert(Near(physical.current, 40.0F - 9.75F * 2.5F * 0.45F));
+	assert(Near(physical.current, 40.0F - 9.5F * 0.45F));
 	physical.current = 40.0F;
 	sword.shieldBlocked = true;
 	assert(physical.Apply(settings, sword).handled);
-	assert(Near(physical.current, 40.0F - 9.75F * 2.5F * 0.25F));
+	assert(Near(physical.current, 40.0F - 9.5F * 0.25F));
 
 	State magic;
+	magic.SetPlayerTarget(true);
 	magic.SetMaximum(40.0F);
 	assert(magic.ApplyDamage(settings, 25.0F).handled);
 	assert(Near(magic.current, 15.0F));
 	magic.Advance(settings, 2.0F);
 	assert(Near(magic.current, 15.0F));
 	auto magicBreak = magic.ApplyDamage(settings, 20.0F);
-	assert(magicBreak.broke && Near(magic.current, 40.0F));
+	assert(magicBreak.broke && Near(magic.current, 0.0F));
 	assert(!magic.ApplyDamage(settings, 100.0F).broke);
-	assert(Near(magic.current, 40.0F));
+	assert(Near(magic.current, 0.0F));
 	magic.Advance(settings, settings.staggerImmunitySeconds);
+	assert(Near(magic.current, 0.0F));
 	assert(magic.ApplyDamage(settings, 100.0F).broke);
 	magic.Reset();
 	assert(!magic.ApplyDamage(settings, 10.0F).handled);
 
 	state.SetMaximum(10.0F);
 	state.current = 1.0F;
+	state.SetPlayerTarget(true);
 	result = state.Apply(settings, hit);
-	assert(result.broke && Near(state.current, state.maximum));
+	assert(result.broke && Near(state.current, 0.0F));
 	assert(result.magnitude >= 0.25F && result.magnitude <= 1.0F);
 	result = state.Apply(settings, hit);
-	assert(result.handled && !result.broke && Near(state.current, state.maximum));
+	assert(result.handled && !result.broke && Near(state.current, 0.0F));
 	state.Advance(settings, settings.staggerImmunitySeconds);
 	assert(state.immunity == 0.0F);
 	assert(state.Apply(settings, hit).handled);
@@ -111,6 +115,26 @@ int main()
 	assert(state.maximum == 0.0F && state.current == 0.0F);
 	state.SetMaximum(std::numeric_limits<float>::quiet_NaN());
 	assert(state.maximum == 0.0F);
+
+	Settings postBreak;
+	postBreak.regenDelaySeconds = 0.0F;
+	State recovering;
+	recovering.SetPlayerTarget(true);
+	recovering.SetMaximum(100.0F);
+	recovering.current = 1.0F;
+	assert(recovering.ApplyDamage(postBreak, 10.0F).broke);
+	assert(Near(recovering.current, 0.0F) && recovering.recoveringFromBreak);
+	recovering.Advance(postBreak, postBreak.staggerImmunitySeconds);
+	assert(Near(recovering.current, 0.0F) && Near(recovering.immunity, 0.0F));
+	recovering.Advance(postBreak, 0.5F);
+	assert(Near(recovering.current, 8.0F * kPostBreakRegenMultiplier * 0.5F));
+	recovering.Advance(postBreak, 10.0F);
+	assert(Near(recovering.current, 100.0F) && !recovering.recoveringFromBreak);
+	State ordinary;
+	ordinary.SetMaximum(100.0F);
+	ordinary.current = 20.0F;
+	ordinary.Advance(postBreak, 1.0F);
+	assert(Near(ordinary.current, 28.0F));
 
 	settings.enabled = true;
 	settings.staggerImmunitySeconds = 0.1F;
@@ -133,7 +157,7 @@ int main()
 
 	// Creature tiers scale the base pool only.
 	Settings tiers;
-	assert(Near(tiers.creatureMultiplier, 0.8F));
+	assert(Near(tiers.creatureBaseHitPoiseDamage, 5.5F));
 	assert(Near(TierBasePoise(tiers, CreatureTier::Light), 30.0F));
 	assert(Near(TierBasePoise(tiers, CreatureTier::Medium), 68.0F));
 	assert(Near(TierBasePoise(tiers, CreatureTier::Heavy), 150.0F));
@@ -174,40 +198,47 @@ int main()
 	// A single large advance (hit-time catch-up) must clear immunity, so a follow-up hit can break again.
 	Settings follow;
 	State wolf;
+	wolf.SetPlayerTarget(false);
 	wolf.SetMaximum(30.0F);
 	wolf.ApplyTier(follow, CreatureTier::Light);
 	Hit heavyHit;
-	heavyHit.weaponWeight = 24.0F;
+	heavyHit.weaponWeight = 40.0F;
 	heavyHit.twoHanded = true;
+	heavyHit.powerAttack = true;
 	assert(wolf.Apply(follow, heavyHit).broke);
 	assert(Near(wolf.immunity, 2.0F));
-	assert(!wolf.Apply(follow, heavyHit).broke && Near(wolf.current, 30.0F));
+	assert(!wolf.Apply(follow, heavyHit).broke && Near(wolf.current, wolf.maximum));
 	wolf.Advance(follow, 1.5F);
 	assert(wolf.immunity > 0.0F && !wolf.Apply(follow, heavyHit).broke);
+	assert(Near(wolf.current, wolf.maximum));
 	wolf.Advance(follow, 5.0F);
 	assert(Near(wolf.immunity, 0.0F));
 	assert(wolf.Apply(follow, heavyHit).broke);
 
 	// Standard NPCs keep the shorter post-break immunity; creature tiers use the creature value.
 	State npcState;
+	npcState.SetPlayerTarget(false);
 	npcState.SetMaximum(30.0F);
 	npcState.ApplyTier(follow, CreatureTier::Standard);
-	assert(npcState.Apply(follow, heavyHit).broke && Near(npcState.immunity, 1.0F));
+	assert(npcState.Apply(follow, heavyHit).broke && Near(npcState.current, npcState.maximum) &&
+		Near(npcState.immunity, 1.0F) && !npcState.recoveringFromBreak);
 	State beast;
+	beast.SetPlayerTarget(false);
 	beast.SetMaximum(30.0F);
 	beast.ApplyTier(follow, CreatureTier::Unknown);
-	assert(beast.Apply(follow, heavyHit).broke && Near(beast.immunity, 2.0F));
+	assert(beast.Apply(follow, heavyHit).broke && Near(beast.current, beast.maximum) &&
+		Near(beast.immunity, 2.0F) && !beast.recoveringFromBreak);
 
 	// Outgoing creature damage scales by attacker tier; non-creature tiers are unscaled.
 	Settings damage;
-	assert(Near(CreatureDamageTierMultiplier(damage, CreatureTier::Light), 0.6F));
-	assert(Near(CreatureDamageTierMultiplier(damage, CreatureTier::Medium), 1.2F));
-	assert(Near(CreatureDamageTierMultiplier(damage, CreatureTier::Heavy), 1.375F));
-	assert(Near(CreatureDamageTierMultiplier(damage, CreatureTier::Boss), 2.25F));
+	assert(Near(CreatureDamageTierMultiplier(damage, CreatureTier::Light), 0.75F));
+	assert(Near(CreatureDamageTierMultiplier(damage, CreatureTier::Medium), 1.25F));
+	assert(Near(CreatureDamageTierMultiplier(damage, CreatureTier::Heavy), 1.65F));
+	assert(Near(CreatureDamageTierMultiplier(damage, CreatureTier::Boss), 2.40F));
 	for (const auto neutral : { CreatureTier::Unknown, CreatureTier::Standard, CreatureTier::Excluded }) {
 		assert(Near(CreatureDamageTierMultiplier(damage, neutral), 1.0F));
 	}
-	const float expectedUnblocked[] = { 7.2F, 14.4F, 16.5F, 27.0F };
+	const float expectedUnblocked[] = { 4.125F, 6.875F, 9.075F, 13.2F };
 	const CreatureTier attackers[] = { CreatureTier::Light, CreatureTier::Medium, CreatureTier::Heavy, CreatureTier::Boss };
 	for (int i = 0; i < 4; ++i) {
 		State victim;
@@ -219,7 +250,7 @@ int main()
 		assert(Near(1000.0F - victim.current, expectedUnblocked[i]));
 	}
 
-	// A blocked hit is a share of the unblocked hit: a boss slam bleeds 6.75 through a shield and 12.15 through a weapon block.
+	// A blocked hit is a share of the unblocked boss slam.
 	State shielded;
 	shielded.SetMaximum(1000.0F);
 	Hit slam;
@@ -228,17 +259,17 @@ int main()
 	slam.blocked = true;
 	slam.shieldBlocked = true;
 	shielded.Apply(damage, slam);
-	assert(Near(1000.0F - shielded.current, 6.75F));
+	assert(Near(1000.0F - shielded.current, 3.3F));
 	State weaponBlocked;
 	weaponBlocked.SetMaximum(1000.0F);
 	slam.shieldBlocked = false;
 	weaponBlocked.Apply(damage, slam);
-	assert(Near(1000.0F - weaponBlocked.current, 12.15F));
+	assert(Near(1000.0F - weaponBlocked.current, 5.94F));
 	State openSlam;
 	openSlam.SetMaximum(1000.0F);
 	slam.blocked = false;
 	openSlam.Apply(damage, slam);
-	assert(Near(1000.0F - openSlam.current, 27.0F));
+	assert(Near(1000.0F - openSlam.current, 13.2F));
 	assert(1000.0F - shielded.current < 1000.0F - weaponBlocked.current &&
 		1000.0F - weaponBlocked.current < 1000.0F - openSlam.current);
 	slam.blocked = true;
@@ -249,18 +280,21 @@ int main()
 	// Light breaks keep the 0.25 floor; boss breaks always stagger at full strength.
 	Settings breaking;
 	State light;
+	light.SetPlayerTarget(false);
 	light.SetMaximum(100.0F);
 	light.ApplyTier(breaking, CreatureTier::Light);
 	light.current = 1.0F;
 	auto lightBreak = light.ApplyDamage(breaking, 5.0F);
 	assert(lightBreak.broke && Near(lightBreak.magnitude, 0.25F));
+	assert(Near(light.current, light.maximum) && !light.recoveringFromBreak);
 	State colossus;
+	colossus.SetPlayerTarget(false);
 	colossus.SetMaximum(240.0F);
 	colossus.ApplyTier(breaking, CreatureTier::Boss);
 	colossus.current = 1.0F;
 	auto bossBreak = colossus.ApplyDamage(breaking, 5.0F);
 	assert(bossBreak.broke && Near(bossBreak.magnitude, 1.0F));
-	assert(Near(colossus.current, 240.0F));
+	assert(Near(colossus.current, colossus.maximum) && !colossus.recoveringFromBreak);
 
 	// Physical-damage bonus: added to base poise damage before the type, power-attack and block multipliers.
 	Settings baseline;
@@ -287,7 +321,7 @@ int main()
 	stab.physicalDamage = 60.0F;
 	auto stabResult = sneaky.Apply(baseline, stab);
 	assert(stabResult.handled && Near(stabResult.rawBonus, 3.0F) && !stabResult.rawCapped);
-	assert(Near(1000.0F - sneaky.current, (6.0F + 3.75F + 3.0F) * 2.5F));
+	assert(Near(1000.0F - sneaky.current, 6.0F + 3.5F + 3.0F));
 	assert(Near(sneaky.lastRawBonus, 3.0F) && !sneaky.lastRawCapped);
 	stab.type = HitType::creature;
 	stab.attackerTier = CreatureTier::Boss;
@@ -298,7 +332,7 @@ int main()
 	slammed.SetMaximum(1000.0F);
 	auto slamResult = slammed.Apply(baseline, stab);
 	assert(slamResult.rawCapped && Near(slamResult.rawBonus, 6.0F));
-	assert(Near(1000.0F - slammed.current, (6.0F + 3.75F + 6.0F) * 0.8F * 2.25F * 1.5F * 2.5F * 0.45F));
+	assert(Near(1000.0F - slammed.current, (5.5F + 6.0F) * 2.40F * 1.5F * 0.45F));
 	// A shield block drops the raw weapon damage bonus; weapon-only blocks and open hits keep it.
 	stab.shieldBlocked = true;
 	State shieldSlammed;
@@ -306,14 +340,14 @@ int main()
 	auto shieldSlamResult = shieldSlammed.Apply(baseline, stab);
 	assert(shieldSlamResult.handled && Near(shieldSlamResult.rawBonus, 0.0F) && !shieldSlamResult.rawCapped);
 	assert(Near(shieldSlammed.lastRawBonus, 0.0F) && !shieldSlammed.lastRawCapped);
-	assert(Near(1000.0F - shieldSlammed.current, (6.0F + 3.75F) * 0.8F * 2.25F * 1.5F * 2.5F * 0.25F));
+	assert(Near(1000.0F - shieldSlammed.current, 5.5F * 2.40F * 1.5F * 0.25F));
 	Hit shieldBreakdownHit = stab;
 	HitBreakdown shieldBreakdown;
 	State shieldExplained;
 	shieldExplained.SetMaximum(1000.0F);
 	shieldExplained.Apply(baseline, shieldBreakdownHit, &shieldBreakdown);
 	assert(Near(shieldBreakdown.rawBonus, 0.0F) && !shieldBreakdown.rawCapped);
-	assert(Near(shieldBreakdown.baseDamage, 6.0F + 3.75F));
+	assert(Near(shieldBreakdown.baseDamage, 5.5F));
 	// A stale shield flag on an unblocked hit must not remove the bonus.
 	stab.blocked = false;
 	State shieldFlagOnly;
@@ -323,6 +357,7 @@ int main()
 	stab.shieldBlocked = false;
 	// Telemetry still reports the bonus while stagger immunity absorbs the hit.
 	State immune;
+	immune.SetPlayerTarget(true);
 	immune.SetMaximum(10.0F);
 	immune.current = 1.0F;
 	Hit finisher;
@@ -330,13 +365,13 @@ int main()
 	assert(immune.Apply(baseline, finisher).broke);
 	auto absorbed = immune.Apply(baseline, finisher);
 	assert(absorbed.handled && !absorbed.broke && Near(absorbed.rawBonus, 4.0F));
-	// Zero physical damage keeps the pre-baseline formula.
+	// Zero physical damage keeps only base and weapon-weight contributions.
 	Hit legacy;
 	legacy.weaponWeight = 10.0F;
 	State legacyState;
 	legacyState.SetMaximum(100.0F);
 	assert(Near(legacyState.Apply(baseline, legacy).rawBonus, 0.0F));
-	assert(Near(100.0F - legacyState.current, 9.75F * 2.5F));
+	assert(Near(100.0F - legacyState.current, 9.5F));
 
 	// Light Armor rating bonus is raw-rating based, capped, and clamped at its own bounds.
 	assert(Near(LightArmorTierBonus(baseline, 0.0F), 0.0F));

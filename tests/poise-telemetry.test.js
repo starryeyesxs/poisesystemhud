@@ -56,7 +56,7 @@ const payload = (extra = {}) => ({
 });
 const hit = (extra = {}) => ({
     dir: 'OUT', attacker: 'Player', target: 'Frost Troll', type: '2H Melee', base: 13.6, raw: 2.3, rawCapped: false,
-    mults: [['2H', 1.4], ['Unblocked', 2.5]], final: 38, broke: false, immune: false, ...extra
+    mults: [['2H', 1.15]], final: 38, broke: false, immune: false, ...extra
 });
 
 test('the overlay is hidden until configured and ignores payloads while disabled', () => {
@@ -157,16 +157,16 @@ test('hit log renders newest first with raw bonus, cap tag, multipliers, immunit
     context.configureTelemetry(true);
     const hits = [
         hit({ rawCapped: true, broke: true }),
-        hit({ dir: 'IN', attacker: 'Giant', target: 'Player', type: 'Creature', base: 8, raw: 0, final: 9, mults: [['Creature', 0.8], ['Boss', 2.25], ['Shield Block', 0.25]] }),
+        hit({ dir: 'IN', attacker: 'Giant', target: 'Player', type: 'Creature', base: 8, raw: 0, final: 9, mults: [['Boss', 2.4], ['Blocked (Shield)', 0.25]] }),
         hit({ type: 'Magic Burst', mults: [], immune: true, final: 12 })
     ];
     context.updatePoiseTelemetry(payload({ hits }));
     assert.equal(element('pt-hit-0').textContent,
-        '[OUT] Player -> Frost Troll (2H Melee): 38.0 [Base 13.6 + RawDmg 2.3 [CAP] * 2H 1.40 * Unblocked 2.50] [STAGGER!]');
+        '[OUT] Player -> Frost Troll (2H Melee): 38.0 [Base 13.6 + RawDmg 2.3 [CAP] * 2H 1.15] [STAGGER!]');
     assert.equal(element('pt-hit-0').classList.contains('pt-out'), true);
     assert.equal(element('pt-hit-0').children[1].className, 'pt-break');
     assert.equal(element('pt-hit-1').textContent,
-        '[IN] Giant -> Player (Creature): 9.0 [Base 8.0 * Creature 0.80 * Boss 2.25 * Shield Block 0.25]');
+        '[IN] Giant -> Player (Creature): 9.0 [Base 8.0 * Boss 2.40 * Blocked (Shield) 0.25]');
     assert.equal(element('pt-hit-1').classList.contains('pt-in'), true);
     assert.equal(element('pt-hit-2').textContent, '[OUT] Player -> Frost Troll (Magic Burst): 0.0 (IMMUNE) [Base 13.6 + RawDmg 2.3]');
     assert.equal(element('pt-hit-3').hidden, true);
@@ -224,7 +224,7 @@ test('the overlay is a separate fixed, click-through block that does not touch t
 });
 
 test('bShowPoiseTelemetry is shipped off, loaded, reset and applied on reload, with no menu option', () => {
-    const ini = read('poisesystemhud.ini'), main = read('src/main.cpp'), menu = read('src/menu_framework.cpp');
+    const ini = read('TruePoise.ini'), main = read('src/main.cpp'), menu = read('src/menu_framework.cpp');
     assert.match(ini.split('[Poise]')[0], /^bShowPoiseTelemetry=false$/m);
     assert.match(main, /bool showPoiseTelemetry = false;/);
     assert.match(main, /readBool\(L"bShowPoiseTelemetry", "bShowPoiseTelemetry", settings\.showPoiseTelemetry\)/);

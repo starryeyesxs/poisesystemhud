@@ -103,22 +103,66 @@ namespace
 		}
 	};
 
-	struct StaggerEffectTag { static constexpr auto name = "StaggerEffect"; };
-	struct DisarmEffectTag { static constexpr auto name = "DisarmEffect"; };
+		struct DisarmEffectTag { static constexpr auto name = "DisarmEffect"; };
 
-	template <class T>
-	bool InstallEffectWhitelist(REL::Relocation<std::uintptr_t>& vtable)
-	{
-		const auto slot = vtable.address() + 0x14 * sizeof(std::uintptr_t);
-		const auto current = *reinterpret_cast<const std::uintptr_t*>(slot);
-		if (!IsExecutable(current)) {
-			logger::warn("Stagger suppression {}::Start slot is not executable; its staggers will be suppressed like other vanilla staggers.", T::name);
-			return false;
+		template <class T>
+		bool InstallEffectWhitelist(REL::Relocation<std::uintptr_t>& vtable)
+		{
+			const auto slot = vtable.address() + 0x14 * sizeof(std::uintptr_t);
+			const auto current = *reinterpret_cast<const std::uintptr_t*>(slot);
+			if (!IsExecutable(current)) {
+				logger::warn("Stagger suppression {}::Start slot is not executable; its staggers will be suppressed like other vanilla staggers.", T::name);
+				return false;
+			}
+			WhitelistedEffect<T>::original = reinterpret_cast<void (*)(RE::ActiveEffect*)>(current);
+			vtable.write_vfunc(0x14, WhitelistedEffect<T>::Thunk);
+			return *reinterpret_cast<const std::uintptr_t*>(slot) == reinterpret_cast<std::uintptr_t>(&WhitelistedEffect<T>::Thunk);
 		}
-		WhitelistedEffect<T>::original = reinterpret_cast<void (*)(RE::ActiveEffect*)>(current);
-		vtable.write_vfunc(0x14, WhitelistedEffect<T>::Thunk);
-		return *reinterpret_cast<const std::uintptr_t*>(slot) == reinterpret_cast<std::uintptr_t>(&WhitelistedEffect<T>::Thunk);
-	}
+
+		// StaggerEffect::Start is shared by shouts (which must stay whitelisted) and melee-triggered stagger spells
+		// (Valhalla's "Small Impact: stagger", etc.). Shouts are SpellType::kVoicePower and keep the allow guard so the
+		// routine gate lets them through; every other stagger spell is suppressed for poise-managed actors.
+		struct StaggerEffectGate
+		{
+			static inline void (*original)(RE::ActiveEffect*) = nullptr;
+
+			static void Thunk(RE::ActiveEffect* effect)
+			{
+				auto* stagger = static_cast<RE::StaggerEffect*>(effect);
+				const bool isShout = stagger->spell &&
+					stagger->spell->GetSpellType() == RE::MagicSystem::SpellType::kVoicePower;
+				if (isShout) {
+					StaggerGate::ScopedAllowStagger allowStagger;
+					original(effect);
+					return;
+				}
+				// `target` is a MagicTarget* secondary base of Actor (offset 0x98), so the ActiveEffect
+				// target-actor accessor's reinterpret_cast<Actor*>(target) yields a garbage pointer. Resolve
+				// through the virtual GetTargetStatsObject() (returns the TESObjectREFR* base) and As<Actor>().
+				auto* refr = stagger->target ? stagger->target->GetTargetStatsObject() : nullptr;
+				auto* actor = refr ? refr->As<RE::Actor>() : nullptr;
+				if (actor && BuiltinPoise::ShouldSuppressStagger(actor)) {
+					LogSuppression("magic stagger", actor, _ReturnAddress());
+					// Skip the stagger and cleanly remove the effect so it does not linger on the MagicTarget.
+					stagger->Dispel(false);
+					return;
+				}
+				original(effect);
+			}
+		};
+
+		bool InstallStaggerEffectGate(REL::Relocation<std::uintptr_t>& vtable)
+		{
+			const auto slot = vtable.address() + 0x14 * sizeof(std::uintptr_t);
+			const auto current = *reinterpret_cast<const std::uintptr_t*>(slot);
+			if (!IsExecutable(current)) {
+				logger::warn("Stagger suppression StaggerEffect::Start slot is not executable; magic staggers are unchanged.");
+				return false;
+			}
+			StaggerEffectGate::original = reinterpret_cast<void (*)(RE::ActiveEffect*)>(current);
+			vtable.write_vfunc(0x14, StaggerEffectGate::Thunk);
+			return *reinterpret_cast<const std::uintptr_t*>(slot) == reinterpret_cast<std::uintptr_t>(&StaggerEffectGate::Thunk);
+		}
 
 	using NotifyFunction = bool (*)(RE::IAnimationGraphManagerHolder*, const RE::BSFixedString&);
 
@@ -128,17 +172,17 @@ namespace
 		static inline NotifyFunction original = nullptr;
 
 		static bool Thunk(RE::IAnimationGraphManagerHolder* holder, const RE::BSFixedString& event)
-		{
-			if ((StaggerGate::IsWardBreakEvent(event.c_str()) || StaggerGate::IsStaggerStartEvent(event.c_str())) && holder) {
-				auto* actor = static_cast<RE::Actor*>(holder);
-				if (BuiltinPoise::ShouldSuppressStagger(actor)) {
-					LogSuppression(StaggerGate::IsWardBreakEvent(event.c_str()) ? "ward break" : "stagger event",
-						actor, _ReturnAddress());
-					return false;
+				{
+					if ((StaggerGate::IsWardBreakEvent(event.c_str()) || StaggerGate::IsStaggerStartEvent(event.c_str())) && holder) {
+						auto* actor = static_cast<RE::Actor*>(holder);
+						if (BuiltinPoise::ShouldSuppressStagger(actor)) {
+							LogSuppression(StaggerGate::IsWardBreakEvent(event.c_str()) ? "ward break" : "stagger event",
+								actor, _ReturnAddress());
+							return false;
+						}
+					}
+					return original(holder, event);
 				}
-			}
-			return original(holder, event);
-		}
 	};
 
 	struct PlayerTag { static constexpr auto name = "player"; };
@@ -197,13 +241,13 @@ void StaggerSuppression::Install()
 	REL::Relocation<std::uintptr_t> staggerEffect{ RE::VTABLE_StaggerEffect[0] };
 	REL::Relocation<std::uintptr_t> disarmEffect{ RE::VTABLE_DisarmEffect[0] };
 	// The whitelists go first: the routine gate must never be live without them, or shouts would be suppressed.
-	const bool staggerWhitelist = InstallEffectWhitelist<StaggerEffectTag>(staggerEffect);
+		const bool staggerGate = InstallStaggerEffectGate(staggerEffect);
 	const bool disarmWhitelist = InstallEffectWhitelist<DisarmEffectTag>(disarmEffect);
-	const bool routine = staggerWhitelist && disarmWhitelist &&
+		const bool routine = staggerGate && disarmWhitelist &&
 		InstallRoutineGate(REL::RelocationID(36700, 37710).address());
 	if (!routine) {
-		logger::error("Vanilla stagger suppression routine gate not installed (StaggerEffect whitelist={}, DisarmEffect whitelist={}); hit, bash and shout staggers are unchanged.",
-			staggerWhitelist, disarmWhitelist);
+			logger::error("Vanilla stagger suppression routine gate not installed (StaggerEffect gate={}, DisarmEffect whitelist={}); hit, bash and shout staggers are unchanged.",
+				staggerGate, disarmWhitelist);
 	}
 	bool wardGate = false;
 	if (const auto index = HolderVTableIndex(); index && *index < RE::VTABLE_Character.size()) {
@@ -215,7 +259,7 @@ void StaggerSuppression::Install()
 	} else {
 		logger::warn("Stagger suppression could not locate the animation-graph holder vtable; ward breaks are unchanged.");
 	}
-	logger::info("Vanilla stagger suppression: routine gate={}, StaggerEffect whitelist={}, DisarmEffect whitelist={}, ward-break gate={}.",
-		routine ? "passed" : "not installed", staggerWhitelist ? "passed" : "FAILED",
+	logger::info("Vanilla stagger suppression: routine gate={}, StaggerEffect gate={}, DisarmEffect whitelist={}, ward-break gate={}.",
+			routine ? "passed" : "not installed", staggerGate ? "passed" : "FAILED",
 		disarmWhitelist ? "passed" : "FAILED", wardGate ? "passed" : "FAILED");
 }

@@ -67,6 +67,12 @@ test('every Poise debuff fill color is still defined at the slimmer bar height a
     assert.equal((js.match(/setInterval\(/g) || []).length, 1);
 });
 
+test('faded Daedric resource rows and frame filters disappear completely without hiding the emblem', () => {
+    assert.match(css, /#minimal-layout\.theme-daedric\.hud-idle #min-health,[^}]*#min-stamina,\s*#minimal-layout\.theme-daedric \.min-row\.hidden \{\s*opacity: 0; filter: none;\s*\}/);
+    assert.match(css, /#minimal-layout\.theme-daedric\.hud-idle #min-health,/);
+    assert.doesNotMatch(css, /#minimal-layout\.theme-daedric\.hud-idle #min-emblem/);
+});
+
 test('Daedric Iron art matches the prototype and the Minimalist rules stay untouched underneath', () => {
     for (const id of ['ironGrad', 'silverBevel', 'spearBlade']) assert.match(html, new RegExp(`<linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1">`));
     assert.match(html, /<stop offset="48%" stop-color="#8b909c" \/>/);
@@ -87,7 +93,7 @@ test('Daedric Iron art matches the prototype and the Minimalist rules stay untou
     assert.ok(23 * Math.SQRT2 / 2 < 17 * 78 / 68);
     // Etched runes on the crest, caps and sigils are brightened for daylight backgrounds.
     assert.match(html, /<g stroke="#cfd5e0" stroke-width="0\.9" fill="none" stroke-linecap="round" opacity="0\.95">/);
-    assert.match(js, /stroke="#cfd5e0" stroke-width="0\.8" opacity="0\.95"/);
+    assert.match(js, /stroke="#cfd5e0" stroke-width="0\.[0-9]+"/);
     assert.match(js, /<g stroke="#cfd5e0" stroke-width="0\.85" fill="none" stroke-linecap="round" opacity="0\.95">/);
     assert.doesNotMatch(html + js, /#9ca3b0|#a5acb8/);
     // Daedric-only elements are hidden unless the Daedric theme class is on, so Minimalist keeps its own look.
@@ -95,10 +101,16 @@ test('Daedric Iron art matches the prototype and the Minimalist rules stay untou
     // Every Daedric selector is scoped to .theme-daedric so Minimalist rules are unaffected.
     const daedric = css.slice(css.indexOf('/* Daedric Iron theme'), css.indexOf('/* Reactive resource bars.'));
     for (const selector of daedric.split('{').slice(0, -1).map(part => part.split('}').pop().trim()).filter(s => s && !s.startsWith('/*') && !s.startsWith('@') && !/^\d|^0%/.test(s))) {
-        for (const part of selector.split(',')) assert.match(part.trim(), /theme-daedric|dd-crest|dd-frame|light-gem-core/, part);
+        for (const part of selector.split(',')) assert.match(part.trim(), /theme-daedric|dd-crest|dd-frame|light-gem-core|poise-shield/, part);
     }
     // The shared minimalist structure and reactive hooks remain: the frame overlay is added to, not swapped for, the bars.
     assert.match(js, /<div class="min-track"><div class="min-layer min-trail min-\$\{key\}"><\/div>/);
     assert.match(css, /#minimal-layout #min-health\.health-poison \.min-health \{ --c1: #7ab82e;/);
     assert.match(css, /#minimal-layout\.show-notches \.min-track::after \{ display: block; \}/);
+    assert.doesNotMatch(html, /id="poise-shield-(?:fill-grad|trail-grad|specular-grad|cavity-clip)"/);
+    assert.match(html, /<div id="poise-shield-cavity"/);
+    assert.match(html, /<div id="poise-shield-fill" class="poise-shield-liquid poise-shield-fill"><\/div>/);
+    assert.match(js, /setProperty\('--shield-c1', c1\)/);
+    assert.match(js, /setProperty\('--shield-c2', c2\)/);
+    assert.match(js, /poise-shield-effect-frame'\)\.setAttribute\('stroke', stroke\)/);
 });

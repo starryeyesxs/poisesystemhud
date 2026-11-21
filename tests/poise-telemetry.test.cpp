@@ -45,12 +45,11 @@ int main()
 	auto result = victim.Apply(settings, hit, &breakdown);
 	assert(result.handled && !result.absorbed);
 	assert(std::string(breakdown.typeLabel) == "2H Melee");
-	assert(Near(breakdown.baseDamage, 13.5F) && Near(breakdown.rawBonus, 6.0F) && breakdown.rawCapped);
-	assert(breakdown.tagCount == 3);
-	assert(std::string(breakdown.tags[0].label) == "2H" && Near(breakdown.tags[0].factor, 0.85F));
+	assert(Near(breakdown.baseDamage, 13.0F) && Near(breakdown.rawBonus, 6.0F) && breakdown.rawCapped);
+	assert(breakdown.tagCount == 2);
+	assert(std::string(breakdown.tags[0].label) == "2H" && Near(breakdown.tags[0].factor, 1.15F));
 	assert(std::string(breakdown.tags[1].label) == "Power" && Near(breakdown.tags[1].factor, 1.5F));
-	assert(std::string(breakdown.tags[2].label) == "Unblocked" && Near(breakdown.tags[2].factor, 2.5F));
-	assert(Near(breakdown.finalDamage, (13.5F + 6.0F) * 0.85F * 1.5F * 2.5F));
+	assert(Near(breakdown.finalDamage, (13.0F + 6.0F) * 1.15F * 1.5F));
 	assert(Near(1000.0F - victim.current, breakdown.finalDamage));
 
 	// Passing a breakdown never changes the outcome.
@@ -78,19 +77,18 @@ int main()
 	slam.blocked = true;
 	slam.shieldBlocked = true;
 	const auto slamInfo = describe(slam);
-	assert(std::string(slamInfo.typeLabel) == "Creature" && slamInfo.tagCount == 4);
-	assert(std::string(slamInfo.tags[1].label) == "Boss" && Near(slamInfo.tags[1].factor, 2.25F));
-	assert(std::string(slamInfo.tags[2].label) == "Unblocked" && Near(slamInfo.tags[2].factor, 2.5F));
-	assert(std::string(slamInfo.tags[3].label) == "Shield Block" && Near(slamInfo.tags[3].factor, 0.25F));
-	assert(Near(slamInfo.finalDamage, 6.0F * 0.8F * 2.25F * 2.5F * 0.25F));
+	assert(std::string(slamInfo.typeLabel) == "Creature" && slamInfo.tagCount == 2);
+	assert(std::string(slamInfo.tags[0].label) == "Boss" && Near(slamInfo.tags[0].factor, 2.40F));
+	assert(std::string(slamInfo.tags[1].label) == "Blocked (Shield)" && Near(slamInfo.tags[1].factor, 0.25F));
+	assert(Near(slamInfo.finalDamage, 5.5F * 2.40F * 0.25F));
 	slam.shieldBlocked = false;
 	const auto weaponBlockInfo = describe(slam);
-	assert(weaponBlockInfo.tagCount == 4 && std::string(weaponBlockInfo.tags[3].label) == "Weapon Block");
-	assert(Near(weaponBlockInfo.finalDamage, 6.0F * 0.8F * 2.25F * 2.5F * 0.45F));
+	assert(weaponBlockInfo.tagCount == 2 && std::string(weaponBlockInfo.tags[1].label) == "Blocked (Weapon)");
+	assert(Near(weaponBlockInfo.finalDamage, 5.5F * 2.40F * 0.45F));
 	slam.blocked = false;
 	const auto openInfo = describe(slam);
-	assert(openInfo.tagCount == 3 && std::string(openInfo.tags[2].label) == "Unblocked");
-	assert(Near(openInfo.finalDamage, 6.0F * 0.8F * 2.25F * 2.5F));
+	assert(openInfo.tagCount == 1);
+	assert(Near(openInfo.finalDamage, 5.5F * 2.40F));
 	Hit arrow;
 	arrow.type = HitType::projectile;
 	assert(std::string(describe(arrow).typeLabel) == "Projectile");
@@ -98,7 +96,7 @@ int main()
 	Hit beast;
 	beast.type = HitType::creature;
 	beast.attackerTier = CreatureTier::Unknown;
-	assert(describe(beast).tagCount == 2);
+	assert(describe(beast).tagCount == 0);
 	HitBreakdown overflow;
 	for (int i = 0; i < 20; ++i) {
 		overflow.Add("x", 1.0F);
@@ -107,6 +105,7 @@ int main()
 
 	// Stagger immunity is reported as absorbed with the damage that would have landed.
 	State immune;
+	immune.SetPlayerTarget(true);
 	immune.SetMaximum(10.0F);
 	immune.current = 1.0F;
 	Hit finisher;
@@ -134,14 +133,14 @@ int main()
 	// Weapon benchmark: base + weight + capped estimated physical bonus, scaled by handedness, then unblocked and power.
 	const auto sword = ComputeWeaponBenchmark(settings, true, 10.0F, 40.0F, false, false);
 	assert(sword.armed && Near(sword.estimatedRawBonus, 2.0F) && !sword.rawCapped);
-	assert(Near(sword.lightHit, (6.0F + 3.75F + 2.0F) * 2.5F) && Near(sword.powerHit, sword.lightHit * 1.5F));
+	assert(Near(sword.lightHit, 6.0F + 3.5F + 2.0F) && Near(sword.powerHit, sword.lightHit * 1.5F));
 	const auto greatsword = ComputeWeaponBenchmark(settings, true, 20.0F, 500.0F, true, false);
 	assert(greatsword.rawCapped && Near(greatsword.estimatedRawBonus, 6.0F));
-	assert(Near(greatsword.lightHit, (6.0F + 7.5F + 6.0F) * 0.85F * 2.5F));
+	assert(Near(greatsword.lightHit, (6.0F + 7.0F + 6.0F) * 1.15F));
 	const auto bow = ComputeWeaponBenchmark(settings, true, 5.0F, 20.0F, false, true);
-	assert(bow.ranged && Near(bow.lightHit, (6.0F + 1.875F + 1.0F) * 0.8F * 2.5F));
+	assert(bow.ranged && Near(bow.lightHit, (6.0F + 1.75F + 1.0F) * 0.65F));
 	const auto fists = ComputeWeaponBenchmark(settings, false, 0.0F, 99.0F, false, false);
-	assert(!fists.armed && Near(fists.estimatedRawBonus, 0.0F) && Near(fists.lightHit, 6.0F * 2.5F));
+	assert(!fists.armed && Near(fists.estimatedRawBonus, 0.0F) && Near(fists.lightHit, 6.0F));
 
 	// Magic explanation multiplies back to the damage the poise math produced.
 	MagicPoise::DamageInput magic;
@@ -190,7 +189,7 @@ int main()
 	hitRecord.baseDamage = 13.6F;
 	hitRecord.rawBonus = 2.3F;
 	hitRecord.rawCapped = true;
-	hitRecord.tags = { { "2H", 1.4F }, { "Unblocked", 2.5F } };
+	hitRecord.tags = { { "2H", 1.15F }, { "Blocked (Weapon)", 0.45F } };
 	hitRecord.finalDamage = 38.0F;
 	hitRecord.broke = true;
 	snapshot.hits.push_back(hitRecord);
@@ -201,7 +200,7 @@ int main()
 	assert(Has(json, "\"target\":null"));
 	assert(Has(json, "\"weapon\":{\"armed\":true,\"twoHanded\":false,\"ranged\":false"));
 	assert(Has(json, "\"dir\":\"OUT\"") && Has(json, "\"target\":\"Frost \\\"Troll\\\"\""));
-	assert(Has(json, "\"mults\":[[\"2H\",1.400],[\"Unblocked\",2.500]]"));
+	assert(Has(json, "\"mults\":[[\"2H\",1.150],[\"Blocked (Weapon)\",0.450]]"));
 	assert(Has(json, "\"rawCapped\":true") && Has(json, "\"final\":38.000,\"broke\":true,\"immune\":false"));
 	assert(!Has(json, "inf") && !Has(json, "nan"));
 	assert(json.front() == '{' && json.back() == '}');

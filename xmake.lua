@@ -3,10 +3,10 @@ set_xmakever("3.0.0")
 
 includes("lib/commonlibsse-ng")
 
-local PLUGIN_NAME = "poisesystemhud"
-local PLUGIN_VERSION = "1.3.1"
+local PLUGIN_NAME = "TruePoise"
+local PLUGIN_VERSION = "0.9.0"
 
-local VIEW_NAME = "poisesystemhud"
+local VIEW_NAME = "TruePoise"
 
 set_project(PLUGIN_NAME)
 set_version(PLUGIN_VERSION)
@@ -57,7 +57,7 @@ target(PLUGIN_NAME)
         os.cp(path.join(os.projectdir(), "README.md"), distdir)
         os.cp(path.join(os.projectdir(), "POISE_GUIDE.txt"), distdir)
         os.cp(target:targetfile(), plugindir)
-        os.cp(path.join(os.projectdir(), "poisesystemhud.ini"), plugindir)
+        os.cp(path.join(os.projectdir(), "TruePoise.ini"), plugindir)
         os.cp(path.join(os.projectdir(), "fomod", "info.xml"), fomoddir)
 
         local symbolfile = target:symbolfile()
@@ -98,7 +98,7 @@ target("arpghud_magic_diagnostic")
         os.cp(path.join(os.projectdir(), "README.md"), distdir)
         os.cp(path.join(os.projectdir(), "POISE_GUIDE.txt"), distdir)
         os.cp(target:targetfile(), plugindir)
-                os.cp(path.join(os.projectdir(), "poisesystemhud.ini"), plugindir)
+                os.cp(path.join(os.projectdir(), "TruePoise.ini"), plugindir)
         os.cp(path.join(os.projectdir(), "fomod", "info.xml"), fomoddir)
         local symbolfile = target:symbolfile()
         if symbolfile and os.isfile(symbolfile) then
@@ -137,13 +137,41 @@ target("arpghud_stagger_diagnostic")
         os.cp(path.join(os.projectdir(), "README.md"), distdir)
         os.cp(path.join(os.projectdir(), "POISE_GUIDE.txt"), distdir)
         os.cp(target:targetfile(), plugindir)
-                os.cp(path.join(os.projectdir(), "poisesystemhud.ini"), plugindir)
+                os.cp(path.join(os.projectdir(), "TruePoise.ini"), plugindir)
         os.cp(path.join(os.projectdir(), "fomod", "info.xml"), fomoddir)
         local symbolfile = target:symbolfile()
         if symbolfile and os.isfile(symbolfile) then
             os.cp(symbolfile, plugindir)
         end
         cprint("${bright green}creating self-contained diagnostic package: ${clear}dist/%s_%s-stagger-diagnostic", PLUGIN_NAME, PLUGIN_VERSION)
+    end)
+
+target("arpghud_rogue_stagger_diagnostic")
+    set_default(false)
+    set_basename(PLUGIN_NAME)
+    set_targetdir(path.join(os.projectdir(), "build-rogue-diag"))
+    add_deps("commonlibsse-ng")
+    set_symbols("debug")
+    add_defines("ARPGHUD_MAGIC_GAMEPLAY", "ARPGHUD_ROGUE_STAGGER_DIAGNOSTICS")
+    add_rules("commonlibsse-ng.plugin", {
+       name = PLUGIN_NAME,
+       author = "StarkMP <discord: starkmp>",
+       description = "Uncapped rogue stagger diagnostic build"
+    })
+    add_files("src/**.cpp")
+    add_headerfiles("src/**.h")
+    add_includedirs("src")
+    set_pcxxheader("src/pch.h")
+    add_syslinks("shell32", "ole32")
+    after_build(function (target)
+        local plugindir = path.join(os.projectdir(), "dist", "TruePoise_Diagnostic", "SKSE", "Plugins")
+        os.mkdir(plugindir)
+        os.cp(target:targetfile(), plugindir)
+        local symbolfile = target:symbolfile()
+        if symbolfile and os.isfile(symbolfile) then
+            os.cp(symbolfile, plugindir)
+        end
+        cprint("${bright green}diagnostic DLL: ${clear}dist/TruePoise_Diagnostic/SKSE/Plugins/TruePoise.dll")
     end)
 
 target("arpghud_gameplay_candidate")
@@ -176,7 +204,7 @@ target("arpghud_gameplay_candidate")
         os.cp(path.join(os.projectdir(), "README.md"), distdir)
         os.cp(path.join(os.projectdir(), "POISE_GUIDE.txt"), distdir)
         os.cp(target:targetfile(), plugindir)
-                os.cp(path.join(os.projectdir(), "poisesystemhud.ini"), plugindir)
+                os.cp(path.join(os.projectdir(), "TruePoise.ini"), plugindir)
         os.cp(path.join(os.projectdir(), "fomod", "*"), fomoddir)
         local symbolfile = target:symbolfile()
         if symbolfile and os.isfile(symbolfile) then

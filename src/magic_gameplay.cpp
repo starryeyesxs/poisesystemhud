@@ -4,6 +4,9 @@
 #include "builtin_poise.h"
 #include "hook_call.h"
 #include "magic_poise_math.h"
+#ifdef ARPGHUD_ROGUE_STAGGER_DIAGNOSTICS
+#include "rogue_stagger_diagnostic.h"
+#endif
 
 #include <array>
 #include <atomic>
@@ -299,6 +302,9 @@ namespace
 
 	bool AddTarget(RE::MagicTarget* target, RE::MagicTarget::AddTargetData* data)
 	{
+#ifdef ARPGHUD_ROGUE_STAGGER_DIAGNOSTICS
+		RogueStaggerCapture::NoteMagicEffect(target, data);
+#endif
 		Impact impact;
 		// Hostile absorbs (Vampiric Drain, absorb enchantments) are not poise damage, but they set Sapped. Weapon
 		// enchantments may leave no lasting effect to scan, so the hit itself is noted.

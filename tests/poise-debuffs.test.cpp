@@ -334,12 +334,26 @@ int main()
 	poisoned.SetDebuffs({});
 	poisoned.Advance(quick, 100.0F);
 	assert(Near(poisoned.current, 100.0F));
-	// A poise break still refills to the maximum.
+	// A poise break remains empty through immunity and retains post-break surge state.
 	State broken = Ready(quick, 10.0F);
+	broken.SetPlayerTarget(true);
 	poison.magnitude = 10.0F;
 	broken.SetDebuffs(With(poison));
 	broken.current = 1.0F;
-	assert(broken.ApplyDamage(quick, 50.0F).broke && Near(broken.current, broken.maximum));
+	assert(broken.ApplyDamage(quick, 50.0F).broke && Near(broken.current, 0.0F));
+	assert(broken.recoveringFromBreak);
+	broken.Advance(quick, quick.staggerImmunitySeconds);
+	assert(Near(broken.current, 0.0F));
+	broken.Advance(quick, 0.1F);
+	assert(Near(broken.current, 0.0F + 8.0F * kPostBreakRegenMultiplier * 0.1F));
+
+	State npcBroken = Ready(quick, 10.0F);
+	npcBroken.SetPlayerTarget(false);
+	npcBroken.SetDebuffs(With(poison));
+	npcBroken.current = 1.0F;
+	assert(npcBroken.ApplyDamage(quick, 50.0F).broke);
+	assert(Near(npcBroken.current, npcBroken.maximum));
+	assert(!npcBroken.recoveringFromBreak);
 
 	// Debuffs and the cap combine: poisoned and bleeding recovers slower toward the ceiling.
 	State both = Ready(quick);

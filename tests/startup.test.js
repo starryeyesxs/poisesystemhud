@@ -37,6 +37,20 @@ test('HUD visibility and vanilla meters do not depend on hotbar initialization',
     assert.ok(!create.includes('IsGameplayReady()'));
 });
 
+test('vanilla meter suppression is reversible and movie-lifetime scoped', () => {
+    const suppression = section('void DiscardVanillaMeterState()', 'void OnDomReady');
+    assert.match(source, /std::array<const char\*, 5> kVanillaMeterNames\{\s*"Health", "Magica", "Stamina", "RightHandChargeMeter", "LeftHandChargeMeter"\s*\}/);
+    assert.match(suppression, /if \(!settings\.enableCustomHud\)[\s\S]*RestoreVanillaMeters\(\)/);
+    assert.match(suppression, /hudMenu->uiMovie\.get\(\) != vanillaMeterState\.movie/);
+    assert.match(suppression, /GetDisplayInfo\(&vanillaMeterState\.original\[i\]\)/);
+    assert.match(suppression, /SetDisplayInfo\(vanillaMeterState\.original\[i\]\)/);
+    assert.match(suppression, /kVanillaMeterNames/);
+    const events = section('class MenuVisibilitySink', 'MenuVisibilitySink menuVisibilitySink;');
+    assert.match(events, /event->opening[\s\S]*DiscardVanillaMeterState\(\)[\s\S]*RestoreVanillaMeters\(\)/);
+    const settings = section('void SendSettingsToHudImpl', '// Export settings for menu access');
+    assert.match(settings, /changedKey == "bEnableCustomHud"[\s\S]*HideVanillaMeters\(\)/);
+});
+
 test('passive always-open overlays do not block the HUD', () => {
     const blockers = section('bool HasBlockingMenus()', 'void UpdateHudVisibility()');
     assert.match(blockers, /ui->GetMenu\(name\)/);

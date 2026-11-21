@@ -10,7 +10,7 @@ const poise = read('src', 'builtin_poise.cpp');
 const main = read('src', 'main.cpp');
 const build = read('xmake.lua');
 const menu = read('src', 'menu_framework.cpp');
-const ini = read('poisesystemhud.ini');
+const ini = read('TruePoise.ini');
 
 test('stagger diagnostics are isolated in an explicit non-default build', () => {
     assert.match(build, /target\("arpghud_stagger_diagnostic"\)[\s\S]*?set_default\(false\)/);

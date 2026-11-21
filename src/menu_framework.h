@@ -49,7 +49,7 @@ namespace MenuFramework
 	// ========== INI Persistence & Debouncing ==========
 
 	/**
-	 * @brief Get the path to poisesystemhud.ini
+	 * @brief Get the path to TruePoise.ini
 	 */
 	std::filesystem::path GetIniPath();
 
@@ -81,4 +81,3 @@ namespace MenuFramework
 	 */
 	void UpdatePendingWrites();
 }
-

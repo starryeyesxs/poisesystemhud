@@ -96,6 +96,52 @@
                 <svg id="pd-icon-scorched" class="pd-icon pd-scorched pd-off" viewBox="0 0 14 14" width="14" height="14" role="img" aria-label="Scorched: melee poise damage increased"><use href="#pd-scorched"></use></svg>
             </div>
         </div>
+        <div id="poise-shield-widget" class="poise-shield-widget" hidden aria-label="Player poise">
+            <div id="poise-shield-stage" class="poise-shield-stage">
+                <div id="poise-shield-cavity" class="poise-shield-cavity">
+                    <div class="poise-shield-tick poise-shield-tick-75"></div>
+                    <div class="poise-shield-tick poise-shield-tick-50"></div>
+                    <div class="poise-shield-tick poise-shield-tick-25"></div>
+                    <div id="poise-shield-trail" class="poise-shield-liquid poise-shield-trail"></div>
+                    <div id="poise-shield-fill" class="poise-shield-liquid poise-shield-fill"></div>
+                    <div id="poise-shield-meniscus" class="poise-shield-meniscus"></div>
+                    <div id="poise-shield-ceiling" class="poise-shield-ceiling"></div>
+                </div>
+                <svg id="poise-shield-svg" class="poise-shield-svg" viewBox="0 0 96 114" aria-hidden="true">
+                    <path fill-rule="evenodd" d="M48 8 87 19 83 61C79 84 64 98 48 107 32 98 17 84 13 61L9 19Z M48 19 76 27 73 60C70 79 59 90 48 97 37 90 26 79 23 60L20 27Z" fill="#090a0d" stroke="#090a0d" stroke-width="3.2" stroke-linejoin="miter"/>
+                    <g class="poise-shield-spikes">
+                        <polygon points="48 1 53.5 12 48 10 42.5 12" fill="url(#spearBlade)" stroke="#090a0d" stroke-width="1.3"/>
+                        <polyline points="42.8 11.5 48 1.5 53.2 11.5" fill="none" stroke="#eef3fc" stroke-width=".65" opacity=".92"/>
+                        <line x1="47.65" y1="2.2" x2="47.65" y2="9.8" stroke="#f0f4fc" stroke-width=".6"/>
+                        <line x1="48.35" y1="2.2" x2="48.35" y2="9.8" stroke="#14161b" stroke-width=".6"/>
+                        <polygon points="48 113 53.5 102 48 104 42.5 102" fill="url(#spearBlade)" stroke="#090a0d" stroke-width="1.3"/>
+                        <polyline points="42.8 102.5 48 112.5 53.2 102.5" fill="none" stroke="#b6becd" stroke-width=".6" opacity=".82"/>
+                        <polygon points="4 18 12 16.5 11 22" fill="url(#spearBlade)" stroke="#090a0d" stroke-width="1.1"/>
+                        <polygon points="92 18 84 16.5 85 22" fill="url(#spearBlade)" stroke="#090a0d" stroke-width="1.1"/>
+                    </g>
+                    <path fill-rule="evenodd" d="M48 10 85 20 81 60C77 82 63 96 48 105 33 96 19 82 15 60L11 20Z M48 19 76 27 73 60C70 79 59 90 48 97 37 90 26 79 23 60L20 27Z" fill="url(#ironGrad)" stroke="url(#silverBevel)" stroke-width="1.25"/>
+                    <polyline points="11 20 48 10 85 20" fill="none" stroke="#edf1fa" stroke-width=".9" opacity=".95"/>
+                    <g class="poise-shield-runes" stroke="#cfd5e0" stroke-width=".8" fill="none" stroke-linecap="square" opacity=".88">
+                        <path d="M24 18.5 27 15.5 29 18.5M26.5 14.5V19.8M33 16 36 13.5 38 16.5M34.5 17.2 38.5 14"/>
+                        <path d="M72 18.5 69 15.5 67 18.5M69.5 14.5V19.8M63 16 60 13.5 58 16.5M61.5 17.2 57.5 14"/>
+                        <path d="M16.5 43 19 46 16.5 49M15.5 46H19.8M79.5 43 77 46 79.5 49M80.5 46H76.2"/>
+                    </g>
+                    <path d="M48 19 76 27 73 60C70 79 59 90 48 97 37 90 26 79 23 60L20 27Z" fill="none" stroke="url(#silverBevel)" stroke-width="1.15"/>
+                    <path id="poise-shield-effect-frame" d="M48 19 76 27 73 60C70 79 59 90 48 97 37 90 26 79 23 60L20 27Z" fill="none" stroke="#d8b54b" stroke-width="1.8" opacity="0"/>
+                    <path id="poise-shield-break-frame" d="M48 10 85 20 81 60C77 82 63 96 48 105 33 96 19 82 15 60L11 20Z" fill="none" stroke="#ff3434" stroke-width="2.2" opacity="0"/>
+                    <g fill="#0b0c0f">
+                        <circle cx="48" cy="14.5" r="1.75"/><circle cx="15.5" cy="22.5" r="1.75"/>
+                        <circle cx="80.5" cy="22.5" r="1.75"/><circle cx="48" cy="100.5" r="1.75"/>
+                    </g>
+                    <g fill="#838996" stroke="#cfd5e0" stroke-width=".35">
+                        <circle cx="48" cy="14.5" r="1.15"/><circle cx="15.5" cy="22.5" r="1.15"/>
+                        <circle cx="80.5" cy="22.5" r="1.15"/><circle cx="48" cy="100.5" r="1.15"/>
+                    </g>
+                    <g fill="#f0f4fc"><circle cx="47.6" cy="14.1" r=".38"/><circle cx="15.1" cy="22.1" r=".38"/><circle cx="80.1" cy="22.1" r=".38"/><circle cx="47.6" cy="100.1" r=".38"/></g>
+                </svg>
+            </div>
+            <div id="min-poise-numbers" hidden></div>
+        </div>
     </div>
     <div id="target-poise" aria-hidden="true">
         <div class="target-poise-label"><span id="target-poise-name"></span><span id="target-poise-values"></span></div>
@@ -103,6 +149,7 @@
     </div>
     <aside id="poise-telemetry" hidden aria-hidden="true" aria-label="Live poise telemetry (developer overlay)">
         <div class="pt-header"><span class="pt-title">POISE TELEMETRY [F10 RELOAD]</span><span id="pt-weapon" class="pt-weapon"></span></div>
+        <div id="pt-rogue-stagger" class="pt-rogue-stagger" hidden></div>
         <div id="pt-status" class="pt-status" hidden>Poise unavailable</div>
         <div id="pt-player" class="pt-card">
             <div id="pt-player-name" class="pt-card-title"></div>

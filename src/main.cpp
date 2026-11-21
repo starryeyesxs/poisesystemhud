@@ -11,6 +11,9 @@
 #ifdef ARPGHUD_STAGGER_DIAGNOSTICS
 #include "stagger_diagnostic.h"
 #endif
+#ifdef ARPGHUD_ROGUE_STAGGER_DIAGNOSTICS
+#include "rogue_stagger_diagnostic.h"
+#endif
 #include "poise_bridge.h"
 #include <keyhandler/keyhandler.h>
 #ifdef ARPGHUD_ENABLE_MENU
@@ -30,11 +33,12 @@
 
 namespace
 {
-	constexpr auto kViewPath = "poisesystemhud/index.html";
+	constexpr auto kViewPath = "TruePoise/index.html";
 	constexpr DWORD kStatsUpdateIntervalMs = 100;
 
 	struct HudSettings
 	{
+		bool enableCustomHud = true;
 		bool enableWeatherWidget = true;
 		bool enableSneakLightGem = true;
 		int hudTheme = 0;
@@ -42,6 +46,9 @@ namespace
 		int sideOffsetLeft = 20;
 		int bottomOffset = 16;
 		bool showPoiseBar = true;
+		bool enablePoiseShield = true;
+		int poiseShieldOffsetX = 0;
+		int poiseShieldOffsetY = 0;
 		bool showPoiseNumbers = false;
 		bool showTargetPoiseBar = false;
 		bool showPoiseTelemetry = false;
@@ -74,6 +81,14 @@ namespace
 		return std::format("configureHudScale({:.2f})", std::clamp(settings.hudScale, 0.70F, 1.50F));
 	}
 
+	std::string PoiseShieldScript()
+	{
+		return std::format("configurePoiseShield({}, {}, {})",
+			settings.enablePoiseShield,
+			std::clamp(settings.poiseShieldOffsetX, -500, 2000),
+			std::clamp(settings.poiseShieldOffsetY, -200, 2000));
+	}
+
 	BuiltinPoise::Settings poiseSettings;
 	KeyHandlerEvent reloadKeyHandler = INVALID_REGISTRATION_HANDLE;
 	PRISMA_UI_API::IVPrismaUI1* prismaUI = nullptr;
@@ -95,6 +110,7 @@ namespace
 	float lastPoiseMaximum = 0.0F;
 	std::string lastTargetScript;
 	std::string lastTelemetryScript;
+	std::string lastRogueStaggerAlertScript;
 	std::string lastDebuffIconScript;
 	std::string lastReactiveBarScript;
 	bool meterErrorLogged = false;
@@ -102,6 +118,16 @@ namespace
 	std::string lastWorldScript;
 	std::string lastLightScript;
 	bool resetMinimalPending = false;
+	constexpr std::array<const char*, 5> kVanillaMeterNames{
+		"Health", "Magica", "Stamina", "RightHandChargeMeter", "LeftHandChargeMeter"
+	};
+	struct VanillaMeterState
+	{
+		RE::GFxMovieView* movie = nullptr;
+		std::array<RE::GFxValue::DisplayInfo, kVanillaMeterNames.size()> original{};
+		std::array<bool, kVanillaMeterNames.size()> captured{};
+	};
+	VanillaMeterState vanillaMeterState;
 
 	void RegisterReloadKey();
 
@@ -110,13 +136,13 @@ namespace
 		wchar_t executablePath[32768]{};
 		const DWORD length = GetModuleFileNameW(nullptr, executablePath, static_cast<DWORD>(std::size(executablePath)));
 		if (length == 0 || length >= std::size(executablePath)) {
-			logger::error("Cannot resolve Skyrim executable path for poisesystemhud.ini; retaining current settings.");
+			logger::error("Cannot resolve Skyrim executable path for TruePoise.ini; retaining current settings.");
 			return;
 		}
 		const auto iniPath = std::filesystem::path(executablePath).parent_path() /
-			L"Data" / L"SKSE" / L"Plugins" / L"poisesystemhud.ini";
+			L"Data" / L"SKSE" / L"Plugins" / L"TruePoise.ini";
 		if (GetFileAttributesW(iniPath.c_str()) == INVALID_FILE_ATTRIBUTES) {
-			logger::warn("Cannot access poisesystemhud.ini (Windows error {}); retaining current settings.", GetLastError());
+			logger::warn("Cannot access TruePoise.ini (Windows error {}); retaining current settings.", GetLastError());
 			return;
 		}
 
@@ -125,14 +151,14 @@ namespace
 			const DWORD size = GetPrivateProfileStringW(section, key, L"", buffer,
 				static_cast<DWORD>(std::size(buffer)), iniPath.c_str());
 			if (size == 0 || size >= std::size(buffer) - 1) {
-				logger::warn("Missing or oversized poisesystemhud.ini setting; retaining its previous value.");
+				logger::warn("Missing or oversized TruePoise.ini setting; retaining its previous value.");
 				return {};
 			}
 			std::string value;
 			value.reserve(size);
 			for (DWORD i = 0; i < size; ++i) {
 				if (buffer[i] > 127) {
-					logger::warn("Non-ASCII poisesystemhud.ini setting; retaining its previous value.");
+					logger::warn("Non-ASCII TruePoise.ini setting; retaining its previous value.");
 					return {};
 				}
 				value.push_back(static_cast<char>(buffer[i]));
@@ -155,6 +181,8 @@ namespace
 		};
 		readOffset(L"iSideOffsetLeft", "iSideOffsetLeft", settings.sideOffsetLeft, -500);
 		readOffset(L"iBottomOffset", "iBottomOffset", settings.bottomOffset, -200);
+		readOffset(L"iPoiseShieldOffsetX", "iPoiseShieldOffsetX", settings.poiseShieldOffsetX, -500);
+		readOffset(L"iPoiseShieldOffsetY", "iPoiseShieldOffsetY", settings.poiseShieldOffsetY, -200);
 		auto readBool = [&](const wchar_t* key, const char* name, bool& target, const wchar_t* section = L"HUD") {
 			const auto text = readValue(key, section);
 			if (text == "true" || text == "1") {
@@ -176,6 +204,7 @@ namespace
 				logger::warn("Invalid {} '{}'; retaining {}.", name, text, target);
 			}
 		};
+		readBool(L"bEnableCustomHud", "bEnableCustomHud", settings.enableCustomHud);
 		readBool(L"bEnableWeatherWidget", "bEnableWeatherWidget", settings.enableWeatherWidget);
 		readBool(L"bEnableSneakLightGem", "bEnableSneakLightGem", settings.enableSneakLightGem);
 		{
@@ -196,6 +225,7 @@ namespace
 		}
 		readRange(L"fHudScale", "fHudScale", settings.hudScale, 0.70F, 1.50F);
 		readBool(L"bShowPoiseBar", "bShowPoiseBar", settings.showPoiseBar);
+		readBool(L"bEnablePoiseShield", "bEnablePoiseShield", settings.enablePoiseShield);
 		readBool(L"bShowPoiseNumbers", "bShowPoiseNumbers", settings.showPoiseNumbers);
 		readBool(L"bShowTargetPoiseBar", "bShowTargetPoiseBar", settings.showTargetPoiseBar);
 		readBool(L"bShowPoiseTelemetry", "bShowPoiseTelemetry", settings.showPoiseTelemetry);
@@ -212,6 +242,7 @@ namespace
 		readBool(L"bEnableBuiltInPoise", "bEnableBuiltInPoise", poiseSettings.enabled, L"Poise");
 		readBool(L"bEnableNPCPoise", "bEnableNPCPoise", poiseSettings.npcEnabled, L"Poise");
 		readBool(L"bSuppressVanillaStaggers", "bSuppressVanillaStaggers", poiseSettings.suppressVanillaStaggers, L"Poise");
+		readBool(L"bEnableHitPushBack", "bEnableHitPushBack", poiseSettings.enableHitPushBack, L"Poise");
 		readBool(L"bAllowTimedBashStaggers", "bAllowTimedBashStaggers", poiseSettings.allowTimedBashStaggers, L"Poise");
 		readBool(L"bEnableCreaturePoise", "bEnableCreaturePoise", poiseSettings.enableCreaturePoise, L"Poise");
 		readRange(L"fLightCreaturePoiseMultiplier", "fLightCreaturePoiseMultiplier", poiseSettings.lightCreaturePoiseMultiplier, 0.1F, 100.0F, L"Poise");
@@ -224,11 +255,11 @@ namespace
 		readRange(L"fShieldWeightPoiseMultiplier", "fShieldWeightPoiseMultiplier", poiseSettings.shieldWeightPoiseMultiplier, -1.0F, 2.0F, L"Poise");
 		readBool(L"bApplyShieldWeightToNPCs", "bApplyShieldWeightToNPCs", poiseSettings.applyShieldWeightToNPCs, L"Poise");
 		readRange(L"fBaseHitPoiseDamage", "fBaseHitPoiseDamage", poiseSettings.baseHitDamage, 0.0F, 10000.0F, L"Poise");
+		readRange(L"fCreatureBaseHitPoiseDamage", "fCreatureBaseHitPoiseDamage", poiseSettings.creatureBaseHitPoiseDamage, 0.0F, 100.0F, L"Poise");
 		readRange(L"fWeaponWeightDamageMultiplier", "fWeaponWeightDamageMultiplier", poiseSettings.weaponWeightDamageMultiplier, 0.0F, 100.0F, L"Poise");
 		readRange(L"fTwoHandedMultiplier", "fTwoHandedMultiplier", poiseSettings.twoHandedMultiplier, 0.0F, 10.0F, L"Poise");
 		readRange(L"fShieldBashMultiplier", "fShieldBashMultiplier", poiseSettings.shieldBashMultiplier, 0.0F, 10.0F, L"Poise");
 		readRange(L"fWeaponBashMultiplier", "fWeaponBashMultiplier", poiseSettings.weaponBashMultiplier, 0.0F, 10.0F, L"Poise");
-		readRange(L"fCreatureMultiplier", "fCreatureMultiplier", poiseSettings.creatureMultiplier, 0.0F, 10.0F, L"Poise");
 		readRange(L"fProjectileMultiplier", "fProjectileMultiplier", poiseSettings.projectileMultiplier, 0.0F, 10.0F, L"Poise");
 		readRange(L"fPowerAttackMultiplier", "fPowerAttackMultiplier", poiseSettings.powerAttackMultiplier, 0.0F, 10.0F, L"Poise");
 		readRange(L"fShieldBlockedPhysicalMultiplier", "fShieldBlockedPhysicalMultiplier", poiseSettings.shieldBlockedPhysicalMultiplier, 0.0F, 1.0F, L"Poise");
@@ -240,7 +271,6 @@ namespace
 		readRange(L"fCreatureStaggerImmunitySeconds", "fCreatureStaggerImmunitySeconds", poiseSettings.creatureStaggerImmunitySeconds, 0.0F, 60.0F, L"Poise");
 		readRange(L"fSummonPoiseMultiplier", "fSummonPoiseMultiplier", poiseSettings.summonPoiseMultiplier, 0.1F, 100.0F, L"Poise");
 		readRange(L"fNPCMagicPoiseMultiplier", "fNPCMagicPoiseMultiplier", poiseSettings.npcMagicPoiseMultiplier, 0.0F, 10.0F, L"Poise");
-		readRange(L"fUnblockedPhysicalMultiplier", "fUnblockedPhysicalMultiplier", poiseSettings.unblockedPhysicalMultiplier, 0.0F, 10.0F, L"Poise");
 		readRange(L"fRegenDelaySeconds", "fRegenDelaySeconds", poiseSettings.regenDelaySeconds, 0.0F, 600.0F, L"Poise");
 		readRange(L"fRegenRatePerSecond", "fRegenRatePerSecond", poiseSettings.regenRatePerSecond, 0.0F, 10000.0F, L"Poise");
 		readRange(L"fStaggerImmunitySeconds", "fStaggerImmunitySeconds", poiseSettings.staggerImmunitySeconds, 0.0F, 60.0F, L"Poise");
@@ -399,11 +429,14 @@ namespace
 
 		auto* actorValues = player->AsActorValueOwner();
 		const auto health = actorValues->GetActorValue(RE::ActorValue::kHealth);
-		const auto maxHealth = player->GetActorValueMax(RE::ActorValue::kHealth);
+		const auto maxHealth = health -
+		                       player->GetActorValueModifier(RE::ACTOR_VALUE_MODIFIER::kDamage, RE::ActorValue::kHealth);
 		const auto magicka = actorValues->GetActorValue(RE::ActorValue::kMagicka);
-		const auto maxMagicka = player->GetActorValueMax(RE::ActorValue::kMagicka);
+		const auto maxMagicka = magicka -
+		                        player->GetActorValueModifier(RE::ACTOR_VALUE_MODIFIER::kDamage, RE::ActorValue::kMagicka);
 		const auto stamina = actorValues->GetActorValue(RE::ActorValue::kStamina);
-		const auto maxStamina = player->GetActorValueMax(RE::ActorValue::kStamina);
+		const auto maxStamina = stamina -
+		                        player->GetActorValueModifier(RE::ACTOR_VALUE_MODIFIER::kDamage, RE::ActorValue::kStamina);
 		if (!std::isfinite(health) || !std::isfinite(maxHealth) ||
 			!std::isfinite(magicka) || !std::isfinite(maxMagicka) ||
 			!std::isfinite(stamina) || !std::isfinite(maxStamina)) {
@@ -414,8 +447,9 @@ namespace
 		const auto* actorState = player->AsActorState();
 		const bool combat = player->IsInCombat() || (actorState && actorState->IsWeaponDrawn());
 		const bool moving = actorState && actorState->IsSprinting();
-		const auto script = std::format("updateMinimalStats({:.9g},{:.9g},{:.9g},{:.9g},{:.9g},{:.9g},{},{})",
-			health, maxHealth, magicka, maxMagicka, stamina, maxStamina, combat, moving);
+		const bool casting = player->WhoIsCasting() != 0;
+		const auto script = std::format("updateMinimalStats({:.9g},{:.9g},{:.9g},{:.9g},{:.9g},{:.9g},{},{},{})",
+			health, maxHealth, magicka, maxMagicka, stamina, maxStamina, combat, moving, casting);
 		prismaUI->Invoke(hudView, script.c_str());
 	}
 
@@ -509,6 +543,15 @@ namespace
 		}
 		prismaUI->Invoke(hudView, script.c_str());
 		lastTelemetryScript = script;
+#ifdef ARPGHUD_ROGUE_STAGGER_DIAGNOSTICS
+		std::string alertScript;
+		BuiltinPoise::AppendJsonString(alertScript, RogueStaggerCapture::LatestAlert());
+		alertScript = "updateRogueStaggerAlert(" + alertScript + ")";
+		if (alertScript != lastRogueStaggerAlertScript) {
+			prismaUI->Invoke(hudView, alertScript.c_str());
+			lastRogueStaggerAlertScript = std::move(alertScript);
+		}
+#endif
 	}
 
 	// Must run on the UI task: shows or hides the overlay container to match settings.showPoiseTelemetry.
@@ -526,7 +569,7 @@ namespace
 	// whenever the icons are enabled, independently of the telemetry overlay.
 	void SendPoiseDebuffIcons()
 	{
-		if (!settings.showPoiseDebuffIcons) {
+		if (!settings.showPoiseDebuffIcons && !settings.enablePoiseShield) {
 			return;
 		}
 		BuiltinPoise::PlayerDebuffView view;
@@ -714,8 +757,60 @@ namespace
 		}
 	}
 
+	void DiscardVanillaMeterState()
+	{
+		vanillaMeterState.movie = nullptr;
+		vanillaMeterState.captured.fill(false);
+		meterErrorLogged = false;
+	}
+
+	bool RestoreVanillaMeters()
+	{
+		auto* ui = RE::UI::GetSingleton();
+		if (!ui) {
+			DiscardVanillaMeterState();
+			return false;
+		}
+
+		auto hudMenu = ui->GetMenu<RE::HUDMenu>();
+		if (!hudMenu || !hudMenu->uiMovie || hudMenu->uiMovie.get() != vanillaMeterState.movie) {
+			DiscardVanillaMeterState();
+			return false;
+		}
+
+		auto& root = hudMenu->GetRuntimeData().root;
+		bool success = true;
+		for (std::size_t i = 0; i < kVanillaMeterNames.size(); ++i) {
+			if (!vanillaMeterState.captured[i]) {
+				continue;
+			}
+			RE::GFxValue meter;
+			const bool restored = root.IsDisplayObject() &&
+				root.GetMember(kVanillaMeterNames[i], &meter) && meter.IsDisplayObject() &&
+				meter.SetDisplayInfo(vanillaMeterState.original[i]);
+			success = restored && success;
+		}
+		if (success) {
+			DiscardVanillaMeterState();
+		}
+		return success;
+	}
+
 	void HideVanillaMeters()
 	{
+		if (!settings.enableCustomHud) {
+			const bool hadSuppressedMeters = vanillaMeterState.movie != nullptr;
+			if (hadSuppressedMeters && !RestoreVanillaMeters()) {
+				if (!meterErrorLogged) {
+					logger::warn("Could not restore all vanilla resource and weapon charge clips; retrying.");
+					meterErrorLogged = true;
+				}
+			} else {
+				meterErrorLogged = false;
+			}
+			return;
+		}
+
 		auto* ui = RE::UI::GetSingleton();
 		if (!ui || !IsGameplayReady() || !ui->IsMenuOpen(RE::HUDMenu::MENU_NAME)) {
 			return;
@@ -725,6 +820,11 @@ namespace
 		if (!hudMenu || !hudMenu->uiMovie) {
 			return;
 		}
+		auto* movie = hudMenu->uiMovie.get();
+		if (movie != vanillaMeterState.movie) {
+			DiscardVanillaMeterState();
+			vanillaMeterState.movie = movie;
+		}
 
 		auto& root = hudMenu->GetRuntimeData().root;
 		RE::GFxValue::DisplayInfo hidden;
@@ -732,15 +832,19 @@ namespace
 		hidden.SetAlpha(0.0);
 		hidden.SetY(-2000.0);
 		bool success = root.IsDisplayObject();
-		for (const auto* name : { "Health", "Magica", "Stamina" }) {
+		for (std::size_t i = 0; i < kVanillaMeterNames.size(); ++i) {
 			RE::GFxValue meter;
-			const bool hiddenMeter = root.IsDisplayObject() &&
-				root.GetMember(name, &meter) && meter.IsDisplayObject() &&
+			const bool found = root.IsDisplayObject() &&
+				root.GetMember(kVanillaMeterNames[i], &meter) && meter.IsDisplayObject();
+			if (found && !vanillaMeterState.captured[i]) {
+				vanillaMeterState.captured[i] = meter.GetDisplayInfo(&vanillaMeterState.original[i]);
+			}
+			const bool hiddenMeter = found && vanillaMeterState.captured[i] &&
 				meter.SetDisplayInfo(hidden);
 			success = hiddenMeter && success;
 		}
 		if (!success && !meterErrorLogged) {
-			logger::warn("Could not hide all vanilla Health, Magicka and Stamina clips; retrying.");
+			logger::warn("Could not hide all vanilla resource and weapon charge clips; retrying.");
 			meterErrorLogged = true;
 		} else if (success) {
 			meterErrorLogged = false;
@@ -763,10 +867,13 @@ namespace
 			const auto layoutScript = std::format("configureLayouts({}, {})",
 				settings.enableWeatherWidget, settings.enableSneakLightGem);
 			prismaUI->Invoke(hudView, layoutScript.c_str());
+			prismaUI->Invoke(hudView, std::format("configureCustomHud({})", settings.enableCustomHud).c_str());
 			const auto themeScript = HudThemeScript();
 			prismaUI->Invoke(hudView, themeScript.c_str());
 			const auto scaleScript = HudScaleScript();
 			prismaUI->Invoke(hudView, scaleScript.c_str());
+			const auto shieldScript = PoiseShieldScript();
+			prismaUI->Invoke(hudView, shieldScript.c_str());
 			const auto visibilityScript = std::format("configureVisibility({}, {}, {:.6f}, {:.6f})",
 				settings.alwaysOn, settings.dynamicHud, settings.idleOpacity, settings.fadeDelaySeconds);
 			prismaUI->Invoke(hudView, visibilityScript.c_str());
@@ -893,6 +1000,7 @@ namespace
 			return;
 		}
 		LoadSettings();
+		HideVanillaMeters();
 		viewReady = false;
 		UpdateHudVisibility();
 		logger::info("PrismaUI Invoke({}) reload starting", hudView);
@@ -923,7 +1031,15 @@ namespace
 			const RE::MenuOpenCloseEvent* event,
 			RE::BSTEventSource<RE::MenuOpenCloseEvent>*) override
 		{
-			if (!event || event->menuName.empty() || event->menuName == RE::HUDMenu::MENU_NAME) {
+			if (!event || event->menuName.empty()) {
+				return RE::BSEventNotifyControl::kContinue;
+			}
+			if (event->menuName == RE::HUDMenu::MENU_NAME) {
+				if (event->opening) {
+					DiscardVanillaMeterState();
+				} else {
+					RestoreVanillaMeters();
+				}
 				return RE::BSEventNotifyControl::kContinue;
 			}
 
@@ -964,8 +1080,8 @@ static void SKSEMessageHandler(SKSE::MessagingInterface::Message* message)
 	case SKSE::MessagingInterface::kDataLoaded: {
 		LoadSettings();
 		BuiltinPoise::Install();
-		StaggerSuppression::Install();
-#ifdef ARPGHUD_MAGIC_GAMEPLAY
+				StaggerSuppression::Install();
+		#ifdef ARPGHUD_MAGIC_GAMEPLAY
 		MagicGameplay::Install();
 #endif
 #ifdef ARPGHUD_MAGIC_DIAGNOSTICS
@@ -973,6 +1089,9 @@ static void SKSEMessageHandler(SKSE::MessagingInterface::Message* message)
 #endif
 #ifdef ARPGHUD_STAGGER_DIAGNOSTICS
 		StaggerDiagnostic::Install();
+#endif
+#ifdef ARPGHUD_ROGUE_STAGGER_DIAGNOSTICS
+		RogueStaggerCapture::Install();
 #endif
 		taskInterface = SKSE::GetTaskInterface();
 		if (!taskInterface) {
@@ -1012,6 +1131,7 @@ static void SKSEMessageHandler(SKSE::MessagingInterface::Message* message)
 	}
 	case SKSE::MessagingInterface::kPreLoadGame:
 		logger::info("SKSE kPreLoadGame received.");
+		DiscardVanillaMeterState();
 		BuiltinPoise::EndGame();
 		saveLoaded = false;
 		timerEnabled = false;
@@ -1061,10 +1181,11 @@ extern "C" DLLEXPORT bool SKSEPlugin_Load(const SKSE::LoadInterface* a_skse)
 
 extern "C" DLLEXPORT void SKSEPlugin_Unload()
 {
+	RestoreVanillaMeters();
 #ifdef ARPGHUD_ENABLE_MENU
 	MenuFramework::Shutdown();
 #endif
-	logger::info("Poise System and Minimalist HUD plugin unloaded.");
+	logger::info("TruePoise plugin unloaded.");
 }
 
 #ifdef ARPGHUD_ENABLE_MENU
@@ -1075,7 +1196,8 @@ void SendSettingsToHudImpl(const std::string& changedKey)
 	if (changedKey == "resetHud" || changedKey == "resetPoise") {
 		LoadSettings();
 	}
-	if (changedKey == "fShieldWeightPoiseMultiplier" || changedKey == "bApplyShieldWeightToNPCs") {
+	if (changedKey == "fShieldWeightPoiseMultiplier" || changedKey == "bApplyShieldWeightToNPCs" ||
+		changedKey == "bEnableHitPushBack") {
 		BuiltinPoise::Configure(poiseSettings);
 	}
 	if (changedKey == "bShowPoiseTelemetry") {
@@ -1086,6 +1208,12 @@ void SendSettingsToHudImpl(const std::string& changedKey)
 	}
 	if (changedKey == "bEnableSneakLightGem") {
 		lastLightScript.clear();
+	}
+	if (changedKey == "bEnableWeatherWidget") {
+		lastWorldScript.clear();
+	}
+	if (changedKey == "bEnableCustomHud" || changedKey == "resetHud") {
+		HideVanillaMeters();
 	}
 	if (!prismaUI || !viewReady || !HasValidView()) {
 		return;
@@ -1099,10 +1227,14 @@ void SendSettingsToHudImpl(const std::string& changedKey)
 	if (changedKey == "bShowReactiveBarEffects" || changedKey == "resetHud") {
 		ConfigureReactiveBarsView();
 	}
+	if (changedKey == "bEnablePoiseShield" || changedKey == "resetHud") {
+		lastDebuffIconScript.clear();
+	}
 
 	const auto positionScript = std::format("updateHudPosition({}, {})", settings.sideOffsetLeft, settings.bottomOffset);
 	const auto layoutScript = std::format("configureLayouts({}, {})",
 		settings.enableWeatherWidget, settings.enableSneakLightGem);
+	const auto customHudScript = std::format("configureCustomHud({})", settings.enableCustomHud);
 	const auto visibilityScript = std::format("configureVisibility({}, {}, {:.6f}, {:.6f})",
 		settings.alwaysOn, settings.dynamicHud, settings.idleOpacity, settings.fadeDelaySeconds);
 
@@ -1112,13 +1244,17 @@ void SendSettingsToHudImpl(const std::string& changedKey)
 
 	prismaUI->Invoke(hudView, positionScript.c_str());
 	prismaUI->Invoke(hudView, layoutScript.c_str());
+	prismaUI->Invoke(hudView, customHudScript.c_str());
 	const auto themeScript = HudThemeScript();
 	prismaUI->Invoke(hudView, themeScript.c_str());
 	const auto scaleScript = HudScaleScript();
 	prismaUI->Invoke(hudView, scaleScript.c_str());
+	const auto shieldScript = PoiseShieldScript();
+	prismaUI->Invoke(hudView, shieldScript.c_str());
 	prismaUI->Invoke(hudView, visibilityScript.c_str());
 	prismaUI->Invoke(hudView, minGraphicsScript.c_str());
-	if (changedKey == "bShowPoiseBar" || changedKey == "bShowPoiseNumbers" || changedKey == "resetHud") {
+	if (changedKey == "bShowPoiseBar" || changedKey == "bEnablePoiseShield" ||
+		changedKey == "sHudTheme" || changedKey == "bShowPoiseNumbers" || changedKey == "resetHud") {
 		SendPoise();
 	}
 	logger::debug("Sent HUD settings update (triggered by: {})", changedKey);
@@ -1126,6 +1262,7 @@ void SendSettingsToHudImpl(const std::string& changedKey)
 
 // Export settings for menu access
 namespace menu_exports {
+	bool* get_enableCustomHud() { return &settings.enableCustomHud; }
 	bool* get_enableWeatherWidget() { return &settings.enableWeatherWidget; }
 	bool* get_enableSneakLightGem() { return &settings.enableSneakLightGem; }
 	int* get_hudTheme() { return &settings.hudTheme; }
@@ -1133,6 +1270,9 @@ namespace menu_exports {
 	int* get_sideOffsetLeft() { return &settings.sideOffsetLeft; }
 	int* get_bottomOffset() { return &settings.bottomOffset; }
 	bool* get_showPoiseBar() { return &settings.showPoiseBar; }
+	bool* get_enablePoiseShield() { return &settings.enablePoiseShield; }
+	int* get_poiseShieldOffsetX() { return &settings.poiseShieldOffsetX; }
+	int* get_poiseShieldOffsetY() { return &settings.poiseShieldOffsetY; }
 	bool* get_showPoiseNumbers() { return &settings.showPoiseNumbers; }
 	bool* get_dynamicHud() { return &settings.dynamicHud; }
 	bool* get_alwaysOn() { return &settings.alwaysOn; }
@@ -1143,6 +1283,7 @@ namespace menu_exports {
 	bool* get_poiseEnabled() { return &poiseSettings.enabled; }
 	bool* get_poiseNpcEnabled() { return &poiseSettings.npcEnabled; }
 	bool* get_poiseSuppressVanillaStaggers() { return &poiseSettings.suppressVanillaStaggers; }
+	bool* get_poiseEnableHitPushBack() { return &poiseSettings.enableHitPushBack; }
 	bool* get_allowTimedBashStaggers() { return &poiseSettings.allowTimedBashStaggers; }
 	bool* get_enableCreaturePoise() { return &poiseSettings.enableCreaturePoise; }
 	float* get_lightCreaturePoiseMultiplier() { return &poiseSettings.lightCreaturePoiseMultiplier; }
@@ -1155,11 +1296,11 @@ namespace menu_exports {
 	float* get_shieldWeightPoiseMultiplier() { return &poiseSettings.shieldWeightPoiseMultiplier; }
 	bool* get_applyShieldWeightToNPCs() { return &poiseSettings.applyShieldWeightToNPCs; }
 	float* get_baseHitDamage() { return &poiseSettings.baseHitDamage; }
+	float* get_creatureBaseHitPoiseDamage() { return &poiseSettings.creatureBaseHitPoiseDamage; }
 	float* get_weaponWeightDamageMultiplier() { return &poiseSettings.weaponWeightDamageMultiplier; }
 	float* get_twoHandedMultiplier() { return &poiseSettings.twoHandedMultiplier; }
 	float* get_shieldBashMultiplier() { return &poiseSettings.shieldBashMultiplier; }
 	float* get_weaponBashMultiplier() { return &poiseSettings.weaponBashMultiplier; }
-	float* get_creatureMultiplier() { return &poiseSettings.creatureMultiplier; }
 	float* get_projectileMultiplier() { return &poiseSettings.projectileMultiplier; }
 	float* get_powerAttackMultiplier() { return &poiseSettings.powerAttackMultiplier; }
 	float* get_shieldBlockedPhysicalMultiplier() { return &poiseSettings.shieldBlockedPhysicalMultiplier; }
@@ -1187,7 +1328,6 @@ namespace menu_exports {
 	float* get_hemorrhagingRegenRateMultiplier() { return &poiseSettings.hemorrhagingRegenRateMultiplier; }
 	float* get_scorchedMeleeDamageMultiplier() { return &poiseSettings.scorchedMeleeDamageMultiplier; }
 	float* get_minGlobalRegenCeiling() { return &poiseSettings.minGlobalRegenCeiling; }
-	float* get_unblockedPhysicalMultiplier() { return &poiseSettings.unblockedPhysicalMultiplier; }
 	float* get_regenDelaySeconds() { return &poiseSettings.regenDelaySeconds; }
 	float* get_regenRatePerSecond() { return &poiseSettings.regenRatePerSecond; }
 	float* get_staggerImmunitySeconds() { return &poiseSettings.staggerImmunitySeconds; }

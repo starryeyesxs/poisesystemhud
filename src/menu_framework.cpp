@@ -32,6 +32,7 @@ namespace {
 }
 
 namespace menu_exports {
+	bool* get_enableCustomHud();
 	bool* get_enableWeatherWidget();
 	bool* get_enableSneakLightGem();
 	int* get_hudTheme();
@@ -39,6 +40,9 @@ namespace menu_exports {
 	int* get_sideOffsetLeft();
 	int* get_bottomOffset();
 	bool* get_showPoiseBar();
+	bool* get_enablePoiseShield();
+	int* get_poiseShieldOffsetX();
+	int* get_poiseShieldOffsetY();
 	bool* get_showPoiseNumbers();
 	bool* get_dynamicHud();
 	bool* get_alwaysOn();
@@ -47,6 +51,7 @@ namespace menu_exports {
 	bool* get_poiseEnabled();
 	bool* get_poiseNpcEnabled();
 	bool* get_poiseSuppressVanillaStaggers();
+	bool* get_poiseEnableHitPushBack();
 	bool* get_enableCreaturePoise();
 	float* get_lightCreaturePoiseMultiplier();
 	float* get_mediumCreaturePoiseMultiplier();
@@ -58,6 +63,7 @@ namespace menu_exports {
 	float* get_shieldWeightPoiseMultiplier();
 	bool* get_applyShieldWeightToNPCs();
 	float* get_baseHitDamage();
+	float* get_creatureBaseHitPoiseDamage();
 	float* get_weaponWeightDamageMultiplier();
 	float* get_twoHandedMultiplier();
 	float* get_shieldBashMultiplier();
@@ -66,7 +72,6 @@ namespace menu_exports {
 	float* get_weaponBlockedMagicMultiplier();
 	bool* get_concentrationSpellsDealPoise();
 	bool* get_allowTimedBashStaggers();
-	float* get_creatureMultiplier();
 	float* get_projectileMultiplier();
 	float* get_powerAttackMultiplier();
 	float* get_shieldBlockedPhysicalMultiplier();
@@ -94,7 +99,6 @@ namespace menu_exports {
 	float* get_hemorrhagingRegenRateMultiplier();
 	float* get_scorchedMeleeDamageMultiplier();
 	float* get_minGlobalRegenCeiling();
-	float* get_unblockedPhysicalMultiplier();
 	float* get_regenDelaySeconds();
 	float* get_regenRatePerSecond();
 	float* get_staggerImmunitySeconds();
@@ -147,6 +151,22 @@ namespace MenuFramework
 				SendSettingsToHudImpl("iBottomOffset");
 			}
 
+			auto* poiseShieldOffsetX = ::menu_exports::get_poiseShieldOffsetX();
+			if (ImGuiMCP::SliderInt("Shield X Offset##layout", poiseShieldOffsetX, -500, 2000)) {
+				g_iniDirty = true;
+				g_lastSliderChangeTime = std::chrono::steady_clock::now();
+				QueueIniWrite("iPoiseShieldOffsetX", std::to_string(*poiseShieldOffsetX), "HUD");
+				SendSettingsToHudImpl("iPoiseShieldOffsetX");
+			}
+
+			auto* poiseShieldOffsetY = ::menu_exports::get_poiseShieldOffsetY();
+			if (ImGuiMCP::SliderInt("Shield Y Offset##layout", poiseShieldOffsetY, -200, 2000)) {
+				g_iniDirty = true;
+				g_lastSliderChangeTime = std::chrono::steady_clock::now();
+				QueueIniWrite("iPoiseShieldOffsetY", std::to_string(*poiseShieldOffsetY), "HUD");
+				SendSettingsToHudImpl("iPoiseShieldOffsetY");
+			}
+
 			auto* hudScale = ::menu_exports::get_hudScale();
 			if (ImGuiMCP::SliderFloat("HUD Scale##layout", hudScale, 0.70f, 1.50f, "%.2f")) {
 				*hudScale = std::clamp(std::round(*hudScale * 20.0f) / 20.0f, 0.70f, 1.50f);
@@ -160,6 +180,13 @@ namespace MenuFramework
 
 		// ===== SECTION 2: Widget Visibility & Display =====
 		if (ImGuiMCP::CollapsingHeader("Widget Visibility & Display")) {
+			auto* enableCustomHud = ::menu_exports::get_enableCustomHud();
+			if (ImGuiMCP::Checkbox("Enable Custom Player HUD##widgets", enableCustomHud)) {
+				const char* val = *enableCustomHud ? "true" : "false";
+				QueueIniWrite("bEnableCustomHud", val, "HUD");
+				SendSettingsToHudImpl("bEnableCustomHud");
+			}
+
 			auto* hudTheme = ::menu_exports::get_hudTheme();
 			if (ImGuiMCP::Combo("HUD Theme##widgets", hudTheme, "Daedric Iron\0Minimalist\0")) {
 				QueueIniWrite("sHudTheme", *hudTheme == 1 ? "Minimalist" : "Daedric Iron", "HUD");
@@ -189,6 +216,13 @@ namespace MenuFramework
 				const char* val = *showPoiseBar ? "true" : "false";
 				QueueIniWrite("bShowPoiseBar", val, "HUD");
 				SendSettingsToHudImpl("bShowPoiseBar");
+			}
+
+			auto* enablePoiseShield = ::menu_exports::get_enablePoiseShield();
+			if (ImGuiMCP::Checkbox("Enable Forged Shield Crest##widgets", enablePoiseShield)) {
+				const char* val = *enablePoiseShield ? "true" : "false";
+				QueueIniWrite("bEnablePoiseShield", val, "HUD");
+				SendSettingsToHudImpl("bEnablePoiseShield");
 			}
 
 			auto* showPoiseNumbers = ::menu_exports::get_showPoiseNumbers();
@@ -338,6 +372,15 @@ namespace MenuFramework
 			}
 
 			auto* allowTimedBashStaggers = ::menu_exports::get_allowTimedBashStaggers();
+			auto* enableHitPushBack = ::menu_exports::get_poiseEnableHitPushBack();
+			if (ImGuiMCP::Checkbox("Enable Hit Pushback##poise", enableHitPushBack)) {
+				if (ImGuiMCP::IsItemDeactivatedAfterEdit()) {
+					const char* val = *enableHitPushBack ? "true" : "false";
+					QueueIniWrite("bEnableHitPushBack", val, "Poise");
+					SendSettingsToHudImpl("bEnableHitPushBack");
+				}
+			}
+
 			if (ImGuiMCP::Checkbox("Allow Timed Bash Staggers##poise", allowTimedBashStaggers)) {
 				if (ImGuiMCP::IsItemDeactivatedAfterEdit()) {
 					const char* val = *allowTimedBashStaggers ? "true" : "false";
@@ -470,14 +513,6 @@ namespace MenuFramework
 				SendSettingsToHudImpl("fWeaponBashMultiplier");
 			}
 
-			auto* creatureMult = ::menu_exports::get_creatureMultiplier();
-			if (ImGuiMCP::SliderFloat("Creature Multiplier##poise", creatureMult, 0.5f, 5.0f, "%.2f")) {
-				g_iniDirty = true;
-				g_lastSliderChangeTime = std::chrono::steady_clock::now();
-				QueueIniWrite("fCreatureMultiplier", FloatToString(*creatureMult), "Poise");
-				SendSettingsToHudImpl("fCreatureMultiplier");
-			}
-
 			auto* lightCreaturePoise = ::menu_exports::get_lightCreaturePoiseMultiplier();
 			if (ImGuiMCP::SliderFloat("Light Creature Poise Mult##poise", lightCreaturePoise, 0.1f, 5.0f, "%.2f")) {
 				g_iniDirty = true;
@@ -516,6 +551,14 @@ namespace MenuFramework
 				g_lastSliderChangeTime = std::chrono::steady_clock::now();
 				QueueIniWrite("fBossCreatureRegenMultiplier", FloatToString(*bossCreatureRegen), "Poise");
 				SendSettingsToHudImpl("fBossCreatureRegenMultiplier");
+			}
+
+			auto* creatureBaseHitDamage = ::menu_exports::get_creatureBaseHitPoiseDamage();
+			if (ImGuiMCP::SliderFloat("Creature Base Hit Poise Damage##poise", creatureBaseHitDamage, 0.0f, 100.0f, "%.2f")) {
+				g_iniDirty = true;
+				g_lastSliderChangeTime = std::chrono::steady_clock::now();
+				QueueIniWrite("fCreatureBaseHitPoiseDamage", FloatToString(*creatureBaseHitDamage), "Poise");
+				SendSettingsToHudImpl("fCreatureBaseHitPoiseDamage");
 			}
 
 			auto* lightCreatureDamage = ::menu_exports::get_lightCreatureDamageMultiplier();
@@ -604,14 +647,6 @@ namespace MenuFramework
 				g_lastSliderChangeTime = std::chrono::steady_clock::now();
 				QueueIniWrite("fWeaponBlockedPhysicalMultiplier", FloatToString(*weaponBlockedMult), "Poise");
 				SendSettingsToHudImpl("fWeaponBlockedPhysicalMultiplier");
-			}
-
-			auto* unblockedPhysMult = ::menu_exports::get_unblockedPhysicalMultiplier();
-			if (ImGuiMCP::SliderFloat("Unblocked Physical Mult##poise", unblockedPhysMult, 1.0f, 10.0f, "%.2f")) {
-				g_iniDirty = true;
-				g_lastSliderChangeTime = std::chrono::steady_clock::now();
-				QueueIniWrite("fUnblockedPhysicalMultiplier", FloatToString(*unblockedPhysMult), "Poise");
-				SendSettingsToHudImpl("fUnblockedPhysicalMultiplier");
 			}
 
 			ImGuiMCP::Separator();
@@ -844,7 +879,7 @@ namespace MenuFramework
 
 		logger::info("SKSE Menu Framework is available; initializing menu integration.");
 
-		SKSEMenuFramework::Model::Internal::key = "Poise System and Minimalist HUD";
+		SKSEMenuFramework::Model::Internal::key = "TruePoise";
 
 		// Register the main menu section
 		try {
@@ -918,7 +953,7 @@ namespace MenuFramework
 		if (length == 0 || length >= std::size(executablePath)) {
 			return {};
 		}
-		return std::filesystem::path(executablePath).parent_path() / L"Data" / L"SKSE" / L"Plugins" / L"poisesystemhud.ini";
+		return std::filesystem::path(executablePath).parent_path() / L"Data" / L"SKSE" / L"Plugins" / L"TruePoise.ini";
 	}
 
 	std::string ReadIniValue(const std::string& key, const std::string& section)
@@ -956,7 +991,7 @@ namespace MenuFramework
 
 		auto iniPath = GetIniPath();
 		if (iniPath.empty() || GetFileAttributesW(iniPath.c_str()) == INVALID_FILE_ATTRIBUTES) {
-			logger::warn("Cannot write to poisesystemhud.ini (file not accessible)");
+			logger::warn("Cannot write to TruePoise.ini (file not accessible)");
 			return;
 		}
 
@@ -1004,6 +1039,7 @@ namespace MenuFramework
 			
 			// Reset all HUD settings to defaults in memory
 			// (externally defined in main.cpp - will be read during reload)
+			QueueIniWrite("bEnableCustomHud", "true", "HUD");
 			QueueIniWrite("bEnableWeatherWidget", "true", "HUD");
 			QueueIniWrite("bEnableSneakLightGem", "true", "HUD");
 			QueueIniWrite("sHudTheme", "Daedric Iron", "HUD");
@@ -1011,6 +1047,9 @@ namespace MenuFramework
 			QueueIniWrite("iSideOffsetLeft", "20", "HUD");
 			QueueIniWrite("iBottomOffset", "16", "HUD");
 			QueueIniWrite("bShowPoiseBar", "true", "HUD");
+			QueueIniWrite("bEnablePoiseShield", "true", "HUD");
+			QueueIniWrite("iPoiseShieldOffsetX", "0", "HUD");
+			QueueIniWrite("iPoiseShieldOffsetY", "0", "HUD");
 			QueueIniWrite("bShowPoiseNumbers", "false", "HUD");
 			QueueIniWrite("bShowTargetPoiseBar", "false", "HUD");
 			QueueIniWrite("bShowPoiseTelemetry", "false", "HUD");
@@ -1049,6 +1088,7 @@ namespace MenuFramework
 			QueueIniWrite("bEnableBuiltInPoise", "true", "Poise");
 			QueueIniWrite("bEnableNPCPoise", "true", "Poise");
 			QueueIniWrite("bSuppressVanillaStaggers", "true", "Poise");
+			QueueIniWrite("bEnableHitPushBack", "false", "Poise");
 			QueueIniWrite("bAllowTimedBashStaggers", "false", "Poise");
 			QueueIniWrite("bEnableCreaturePoise", "true", "Poise");
 			QueueIniWrite("fLightCreaturePoiseMultiplier", "0.75", "Poise");
@@ -1056,10 +1096,10 @@ namespace MenuFramework
 			QueueIniWrite("fHeavyCreaturePoiseMultiplier", "3.75", "Poise");
 			QueueIniWrite("fBossCreaturePoiseMultiplier", "6.0", "Poise");
 			QueueIniWrite("fBossCreatureRegenMultiplier", "1.5", "Poise");
-			QueueIniWrite("fLightCreatureDamageMultiplier", "0.6", "Poise");
-			QueueIniWrite("fMediumCreatureDamageMultiplier", "1.2", "Poise");
-			QueueIniWrite("fHeavyCreatureDamageMultiplier", "1.375", "Poise");
-			QueueIniWrite("fBossCreatureDamageMultiplier", "2.25", "Poise");
+			QueueIniWrite("fLightCreatureDamageMultiplier", "0.75", "Poise");
+			QueueIniWrite("fMediumCreatureDamageMultiplier", "1.25", "Poise");
+			QueueIniWrite("fHeavyCreatureDamageMultiplier", "1.65", "Poise");
+			QueueIniWrite("fBossCreatureDamageMultiplier", "2.40", "Poise");
 			QueueIniWrite("fCreatureStaggerImmunitySeconds", "2.0", "Poise");
 			QueueIniWrite("fSummonPoiseMultiplier", "1.5", "Poise");
 			QueueIniWrite("fNPCMagicPoiseMultiplier", "0.6", "Poise");
@@ -1068,16 +1108,15 @@ namespace MenuFramework
 			QueueIniWrite("fShieldWeightPoiseMultiplier", "0.0", "Poise");
 			QueueIniWrite("bApplyShieldWeightToNPCs", "true", "Poise");
 			QueueIniWrite("fBaseHitPoiseDamage", "6.0", "Poise");
-			QueueIniWrite("fWeaponWeightDamageMultiplier", "0.375", "Poise");
-			QueueIniWrite("fTwoHandedMultiplier", "0.85", "Poise");
+			QueueIniWrite("fCreatureBaseHitPoiseDamage", "5.5", "Poise");
+			QueueIniWrite("fWeaponWeightDamageMultiplier", "0.35", "Poise");
+			QueueIniWrite("fTwoHandedMultiplier", "1.15", "Poise");
 			QueueIniWrite("fShieldBashMultiplier", "1.0", "Poise");
 			QueueIniWrite("fWeaponBashMultiplier", "0.35", "Poise");
-			QueueIniWrite("fCreatureMultiplier", "0.8", "Poise");
-			QueueIniWrite("fProjectileMultiplier", "0.8", "Poise");
+			QueueIniWrite("fProjectileMultiplier", "0.65", "Poise");
 			QueueIniWrite("fPowerAttackMultiplier", "1.5", "Poise");
 			QueueIniWrite("fShieldBlockedPhysicalMultiplier", "0.25", "Poise");
 			QueueIniWrite("fWeaponBlockedPhysicalMultiplier", "0.45", "Poise");
-			QueueIniWrite("fUnblockedPhysicalMultiplier", "2.5", "Poise");
 			QueueIniWrite("fRegenDelaySeconds", "3.0", "Poise");
 			QueueIniWrite("fRegenRatePerSecond", "8.0", "Poise");
 			QueueIniWrite("fStaggerImmunitySeconds", "1.0", "Poise");

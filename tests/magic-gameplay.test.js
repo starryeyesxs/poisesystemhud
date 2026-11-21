@@ -9,7 +9,7 @@ const magic = read('src/magic_gameplay.cpp');
 const poise = read('src/builtin_poise.cpp');
 const main = read('src/main.cpp');
 const menu = read('src/menu_framework.cpp');
-const ini = read('poisesystemhud.ini');
+const ini = read('TruePoise.ini');
 const build = read('xmake.lua');
 
 test('candidate has the requested settings and isolated package target', () => {

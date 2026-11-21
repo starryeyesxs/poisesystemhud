@@ -42,7 +42,17 @@ namespace BuiltinPoise
 	[[nodiscard]] bool ReadTarget(TargetValues& values);
 	[[nodiscard]] bool IsInstalled();
 	// Lock-free; true when vanilla staggers on this actor should be dropped (poise-managed, not whitelisted).
-	[[nodiscard]] bool ShouldSuppressStagger(RE::Actor* actor);
+		[[nodiscard]] bool ShouldSuppressStagger(RE::Actor* actor);
+#ifdef ARPGHUD_ROGUE_STAGGER_DIAGNOSTICS
+	struct DiagnosticState
+	{
+		float current = 0.0F;
+		float maximum = 0.0F;
+		float immunity = 0.0F;
+		std::string debuffs;
+	};
+	[[nodiscard]] bool ReadDiagnosticState(RE::Actor* actor, DiagnosticState& diagnostic);
+#endif
 	// "race=<editor ID> tier=<tier>" for diagnostics; takes no locks.
 	[[nodiscard]] std::string DescribeActorClass(RE::Actor* actor);
 #ifdef ARPGHUD_MAGIC_GAMEPLAY

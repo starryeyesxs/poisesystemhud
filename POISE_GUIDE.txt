@@ -12,8 +12,9 @@ built-in poise turns itself off to avoid competing with it.
 
 This system is a work in progress. Balance, spell coverage, and compatibility
 may change as testing continues. It requires Skyrim SE/AE, SKSE64, Address
-Library, and PrismaUI. The poise hooks are currently validated only for
-Skyrim 1.7.104.0.
+Library for SKSE Plugins, SKSE Menu Framework, and Prisma UI 1.5.1. Modern
+Stagger Lock is strongly recommended for directional stagger animations. The
+poise hooks are currently validated only for Skyrim 1.7.104.0.
 
 HOW POISE WORKS
 ---------------
@@ -46,22 +47,19 @@ Creatures scale only the base 40 by their tier; summoned and commanded allies
 get x1.5 maximum poise.
 
 PHYSICAL HITS
-Melee hits, bashes, creature attacks, and arrows start from
-8 + (weapon weight x 0.5) + a damage bonus. The bonus is 5% of the hit's
-damage (sneak-attack multipliers included, before armor), capped at +6, so
-big hits matter but can't dominate. That total is then multiplied by:
-  - Attack type: two-handed x0.85, shield bash x1.0, weapon bash x0.35,
-    creature attack x0.8 (times the creature's own tier scale), arrow x0.8.
+Humanoid/weapon hits start from 6 + (weapon weight x 0.35) + a damage bonus.
+Creature hits instead start from 5.5 + the damage bonus. The bonus is 5% of
+the hit's physical damage (sneak-attack multipliers included), capped at +6;
+shield-blocked hits omit it. That total is then multiplied by:
+  - Attack type: two-handed x1.15, shield bash x1.0, weapon bash x0.35,
+    creature tier x0.75/1.25/1.65/2.40, arrow x0.65.
   - Power attack: x1.5.
   - Scorched (see debuffs): x1.2 on non-arrow hits.
-  - Unblocked hit: x2.5.
-Blocking lets only a share of that through: x0.25 with a shield, x0.45 with a
-weapon alone. Your Block skill, shield perks and well-timed parries shrink the
-damage further on blocked hits. A ward alone does not reduce physical poise
-damage.
+  - Blocking share: x0.25 with a shield, x0.45 with a weapon alone, or x1.0
+    when unblocked. A ward alone does not reduce physical poise damage.
 
 Example: a 20-weight two-hander, unblocked power attack, 200 damage:
-(8 + 10 + 6 capped) x 0.85 x 1.5 x 2.5 = about 76 poise damage.
+(6 + 7 + 6 capped) x 1.15 x 1.5 = 32.775 poise damage.
 
 SPELL HITS
 Hostile fire, frost, and shock spell impacts damage poise, reduced by the
@@ -73,11 +71,19 @@ Frostbite still Numbs them. You can turn this on in the INI, in which case
 channeled spells deal capped poise damage once per second. Cloak effects
 are also pooled and capped; non-channeled cloak effects are not controlled by
 the concentration spell switch.
+A spell's raw poise damage is its scaled magnitude plus its scaled stagger
+component. Burst magnitude scales at 1.2 through magnitude 40, then adds 0.55
+per additional point up to raw burst damage 90. The effect stagger amount is
+multiplied by 10 and added. Elemental resistance and magic resistance then
+multiply the result separately.
 A ward that blocks a spell takes most of the poise damage (x0.35). Blocking
 with a shield or weapon also reduces it (x0.4 shield, x0.7 weapon), but a
 ward takes precedence rather than stacking with them. Wards cost no extra
 Magicka for this system. Not every spell or impact path is covered yet.
 Spells cast by anyone but you deal x0.6 poise damage.
+After ward interception and resistance, direct magic poise damage is scaled
+by worn armor class: clothing x0.70, Light Armor x1.00, Heavy Armor x1.15.
+Wards and physical block sources do not stack with one another.
 
 CREATURES
 Creatures get poise by type (Light x0.75, Medium x1.7, Heavy x3.75, Boss x6.0
@@ -88,6 +94,23 @@ Draugr, Falmer and sabre cats are Medium; bears, trolls and werewolves are
 Heavy; Dragons, Dragon Priests, Giants and Centurions are Boss.
 Vanilla staggers are suppressed on actors using poise, so only poise breaks
 stagger them. Shouts such as Unrelenting Force always keep their stagger.
+
+POISE BREAKS AND MODERN STAGGER LOCK
+When a hit breaks poise, the stagger magnitude is:
+  clamp(final breaking-hit poise damage / maximum poise, 0.25, 1.0)
+Boss-tier creature breaks always request 1.0. The calculation uses the final
+poise damage after physical, creature, magic, resistance, ward, block and
+debuff multipliers. It is not a fixed light/heavy value, and it is not raw
+overkill above zero. Modern Stagger Lock reads this engine stagger magnitude
+and selects its normal directional tier: Small at 0.0, Medium at 0.5, Large at
+0.75, and Largest at 1.0. Vanilla stagger behavior receives the same
+proportional magnitude when MSL is not installed.
+
+HIT PUSHBACK
+bEnableHitPushBack=false by default. Handled hits clear HitData::pushBack
+before the original hit handler, preventing a physical recoil/flinch while
+poise remains positive. Set it to true to keep vanilla pushback. This does
+not suppress the intentional stagger triggered by a poise break.
 
 POISE STATUS DEBUFFS
 Hostile damage-over-time and drain effects don't hit poise directly; they slow
@@ -117,14 +140,16 @@ Poise is reset when loading a save and may reset when toggling the system.
 
 SETTINGS
 --------
-Edit the installed Data\SKSE\Plugins\poisesystemhud.ini, then press F10 in game to
+TruePoise 0.9.0-beta installs TruePoise.dll and TruePoise.ini.
+Edit the installed Data\SKSE\Plugins\TruePoise.ini, then press F10 in game to
 reload settings. Missing or invalid values retain their previous value and are
-logged. true/false settings can also use 1/0. Defaults are shown below.
+logged to TruePoise.log. true/false settings can also use 1/0. Defaults are shown below.
 
 [Poise] - gameplay
 bEnableBuiltInPoise=true          Enable the built-in player and NPC system.
 bEnableNPCPoise=true              Enable poise for eligible NPCs.
 bSuppressVanillaStaggers=true    Drop vanilla staggers on poise-managed actors.
+bEnableHitPushBack=false         Suppress handled-hit physical pushback until a real poise break.
 bAllowTimedBashStaggers=false    Let the vanilla stagger from a timed bash through.
 bEnableCreaturePoise=true         Enable creature poise pools and stagger suppression.
 fLightCreaturePoiseMultiplier=0.75   Light creatures (wolves, skeevers, mudcrabs) base poise scale.
@@ -132,10 +157,10 @@ fMediumCreaturePoiseMultiplier=1.7   Medium creatures (draugr, falmer, chaurus, 
 fHeavyCreaturePoiseMultiplier=3.75   Heavy creatures (bears, trolls, werewolves) scale.
 fBossCreaturePoiseMultiplier=6.0     Boss creatures (dragons, giants, centurions) scale.
 fBossCreatureRegenMultiplier=1.5     Boss creature poise regeneration multiplier.
-fLightCreatureDamageMultiplier=0.6   Outgoing poise damage scale for light creatures.
-fMediumCreatureDamageMultiplier=1.2  Outgoing poise damage scale for medium creatures.
-fHeavyCreatureDamageMultiplier=1.375 Outgoing poise damage scale for heavy creatures.
-fBossCreatureDamageMultiplier=2.25   Outgoing poise damage scale for boss creatures.
+fLightCreatureDamageMultiplier=0.75  Outgoing poise damage scale for light creatures.
+fMediumCreatureDamageMultiplier=1.25 Outgoing poise damage scale for medium creatures.
+fHeavyCreatureDamageMultiplier=1.65  Outgoing poise damage scale for heavy creatures.
+fBossCreatureDamageMultiplier=2.40   Outgoing poise damage scale for boss creatures.
 fCreatureStaggerImmunitySeconds=2.0  Seconds a creature cannot be poise-broken again.
 fSummonPoiseMultiplier=1.5           Maximum poise scale for summoned and commanded actors.
 fNPCMagicPoiseMultiplier=0.6         Magic poise scale for spells not cast by the player.
@@ -144,19 +169,18 @@ fArmorWeightMultiplier=1.0        Maximum poise per unit of worn armor weight.
 fShieldWeightPoiseMultiplier=0.0 Player shield weight multiplier, range -1.0 to 2.0.
 bApplyShieldWeightToNPCs=true    NPCs use fArmorWeightMultiplier for shield weight when true;
                                  when false they use fShieldWeightPoiseMultiplier.
-fBaseHitPoiseDamage=6.0          Base physical hit poise damage.
-fWeaponWeightDamageMultiplier=0.375 Additional damage per weapon-weight unit.
+fBaseHitPoiseDamage=6.0          Base humanoid/weapon hit poise damage.
+fCreatureBaseHitPoiseDamage=5.5  Base creature hit poise damage before creature tier scaling.
+fWeaponWeightDamageMultiplier=0.35 Additional damage per weapon-weight unit for non-creature hits.
 fPhysicalDamagePoiseMultiplier=0.05 Share of the hit's physical damage added to base damage (not on shield-blocked hits).
 fPhysicalDamagePoiseCap=6.0      Hard cap on that physical-damage bonus.
-fTwoHandedMultiplier=0.85        Two-handed melee damage multiplier.
+fTwoHandedMultiplier=1.15        Two-handed melee damage multiplier.
 fShieldBashMultiplier=1.0         Bash multiplier when a shield is equipped.
 fWeaponBashMultiplier=0.35        Bash multiplier for a weapon bash without a shield.
-fCreatureMultiplier=0.8          Hit multiplier for attacks by non-NPC creatures.
-fProjectileMultiplier=0.8        Physical projectile multiplier.
+fProjectileMultiplier=0.65       Physical projectile multiplier.
 fPowerAttackMultiplier=1.5       Power attack multiplier.
 fShieldBlockedPhysicalMultiplier=0.25 Physical hit multiplier when blocking with a shield.
 fWeaponBlockedPhysicalMultiplier=0.45 Physical hit multiplier when blocking with a weapon only.
-fUnblockedPhysicalMultiplier=2.5 Unblocked physical hit multiplier.
 fRegenDelaySeconds=3.0           Delay after damage before regeneration.
 fRegenRatePerSecond=8.0          Poise restored each gameplay second.
 fStaggerImmunitySeconds=1.0      Grace period after a poise break.
@@ -203,10 +227,26 @@ sHemorrhagingEffectKeywords=bleed,hemorrhag  Words that mark a mod's effect as a
 fScorchedMeleeDamageMultiplier=1.20 Poise damage taken from melee while Scorched.
 
 [HUD] - poise display
+bEnableCustomHud=true            Use our full custom resource HUD. When false, the
+                                 vanilla or selected third-party resource HUD is used;
+                                 our Forged Shield and Weather Widget remain optional.
+bEnablePoiseShield=true          Use the standalone Daedric Iron Forged Shield poise meter.
 bShowPoiseBar=true               Show the poise bar; does not disable the system.
 bShowPoiseNumbers=false          Show current / maximum poise on the bar.
 bShowTargetPoiseBar=false        Bar for the last enemy you hit (name, type, poise).
 bShowPoiseDebuffIcons=true       Debuff icons and ceiling tick on the poise bar.
+bShowPoiseTelemetry=false        Developer overlay is disabled by default.
+
+To combine this HUD with TrueHUD or another third-party HUD, leave
+bEnableCustomHud=true and disable only the other mod's overlapping player
+widgets; its enemy bars and other non-overlapping widgets can remain enabled.
+For TrueHUD, configure this in its MCM. To use only the vanilla or another
+third-party HUD, set bEnableCustomHud=false. The standalone Forged Shield and
+Weather Widget can remain enabled independently.
+
+Show Enemy Poise Bar (bShowTargetPoiseBar) is currently a rough test feature.
+Its presentation and behavior will be polished and properly integrated in a
+future update.
 
 See README.md for setting ranges, installation, HUD layout options and
 compatibility details. F10 is the fixed reload key and is not configurable in

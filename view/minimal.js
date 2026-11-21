@@ -1,8 +1,10 @@
 const minimalState = {
-    active: false, weatherEnabled: false, gemEnabled: false, combat: false, moving: false, debuffsVisible: false,
+    active: false, customHudEnabled: true, weatherEnabled: false, gemEnabled: false,
+    combat: false, moving: false, casting: false, debuffsVisible: false,
     theme: 'daedric', light: { sneaking: false, level: null },
     stats: Object.fromEntries(['health', 'magicka', 'stamina', 'poise'].map(key =>
-        [key, { current: 0, max: 0, trail: 0, hitAt: 0, initialized: false, enabled: key !== 'poise' }]))
+        [key, { current: 0, value: 0, max: 0, drainDelta: 0, trail: 0, hitAt: 0,
+            initialized: false, enabled: key !== 'poise' }]))
 };
 
 const HUD_THEMES = ['daedric', 'minimalist'];
@@ -10,14 +12,28 @@ const HUD_THEMES = ['daedric', 'minimalist'];
 const MIN_BAR_BASE_WIDTH = 200;
 const MIN_BAR_MAX_WIDTH = 480;
 const MIN_BAR_PX_PER_POINT = 0.5;
+const POISE_SHIELD_BREAK_MS = 360;
+const RESOURCE_IDLE_TOLERANCE = 1.5;
+const RESOURCE_IDLE_PERCENT = 98.5;
 const visibility = { alwaysOn: false, dynamicHud: true, idleOpacity: 0, fadeDelaySeconds: 3, idle: false, timer: null };
+const poiseShieldState = {
+    enabled: true, offsetX: 0, offsetY: 0, initialized: false, previousPercent: 1,
+    breakUntil: 0, breakTimer: null
+};
+
+function statIsFull(key, stat) {
+    if (key === 'poise') return stat.current >= 100;
+    const deficit = Math.max(0, stat.max - stat.value);
+    return stat.drainDelta < RESOURCE_IDLE_TOLERANCE &&
+        (deficit <= RESOURCE_IDLE_TOLERANCE || stat.current >= RESOURCE_IDLE_PERCENT);
+}
 
 function refreshVisibility(force = false) {
     if (!minimalState.active) return;
-    const stats = Object.values(minimalState.stats);
-    const idle = stats.slice(0, 3).every(stat => stat.initialized) &&
-        !minimalState.combat && !minimalState.moving && !minimalState.debuffsVisible &&
-        stats.every(stat => !stat.enabled || stat.current >= 100);
+    const stats = Object.entries(minimalState.stats);
+    const idle = stats.slice(0, 3).every(([, stat]) => stat.initialized) &&
+        !minimalState.combat && !minimalState.moving && !minimalState.casting && !minimalState.debuffsVisible &&
+        stats.every(([key, stat]) => !stat.enabled || statIsFull(key, stat));
     if (!force && visibility.idle === idle) return;
     visibility.idle = idle;
     clearTimeout(visibility.timer);
@@ -28,6 +44,7 @@ function refreshVisibility(force = false) {
         visibility.timer = setTimeout(() => layout.classList.toggle('hud-idle', true),
             visibility.fadeDelaySeconds * 1000);
     }
+
     for (const key of Object.keys(minimalState.stats)) renderMinimalStat(key);
 }
 
@@ -75,6 +92,16 @@ function configureLayouts(weatherEnabled, gemEnabled) {
     if (minimalState.active) buildMinimalBars();
 }
 
+function configureCustomHud(enabled) {
+    if (typeof enabled !== 'boolean') {
+        console.error('Invalid custom HUD setting', enabled);
+        return;
+    }
+    minimalState.customHudEnabled = enabled;
+    document.getElementById('minimal-layout').classList.toggle('custom-hud-disabled', !enabled);
+    if (minimalState.active) refreshVisibility(true);
+}
+
 function configureHudTheme(theme) {
     if (!HUD_THEMES.includes(theme)) {
         console.error('Invalid HUD theme', theme);
@@ -84,7 +111,35 @@ function configureHudTheme(theme) {
     const layout = document.getElementById('minimal-layout');
     layout.classList.toggle('theme-daedric', theme === 'daedric');
     layout.classList.toggle('theme-minimalist', theme === 'minimalist');
+    positionPoiseReadout(theme);
     renderLightGem();
+    renderMinimalStat('poise');
+    renderPoiseDebuffIcons();
+}
+
+function positionPoiseReadout(theme) {
+    const readout = document.getElementById('min-poise-numbers');
+    const destination = document.getElementById(
+        theme === 'daedric' && poiseShieldState.enabled ? 'poise-shield-widget' : 'min-poise');
+    if (typeof destination.appendChild === 'function' && readout.parentElement !== destination) {
+        destination.appendChild(readout);
+    }
+}
+
+function configurePoiseShield(enabled, offsetX, offsetY) {
+    if (typeof enabled !== 'boolean' || !Number.isInteger(offsetX) || offsetX < -500 || offsetX > 2000 ||
+        !Number.isInteger(offsetY) || offsetY < -200 || offsetY > 2000) {
+        console.error('Invalid poise shield settings', enabled, offsetX, offsetY);
+        return;
+    }
+    Object.assign(poiseShieldState, { enabled, offsetX, offsetY });
+    const layout = document.getElementById('minimal-layout');
+    layout.classList.toggle('poise-shield-disabled', !enabled);
+    layout.style.setProperty('--poise-shield-x', `${offsetX}px`);
+    layout.style.setProperty('--poise-shield-y', `${offsetY}px`);
+    positionPoiseReadout(minimalState.theme);
+    renderMinimalStat('poise');
+    renderPoiseDebuffIcons();
 }
 
 // Scales the whole player cluster (bars, debuff icons and crest) uniformly from its bottom-left corner.
@@ -119,11 +174,22 @@ function updateMinimalGraphics(filigree, shine, shadow, notches) {
 function daedricCapMarkup(isRight) {
     return [
         `<svg class="dd-cap ${isRight ? 'right' : ''}" viewBox="0 0 26 24" aria-hidden="true">`,
+        `<polygon points="1,12 11,7.5 9.5,12 11,16.5" fill="none" stroke="#090a0d" stroke-width="1.4" stroke-linejoin="miter"/>`,
+        `<path d="M26,2 L15,2 L9.5,12 L15,22 L26,22 L26,18.5 L17,18.5 L13.5,12 L17,5.5 L26,5.5 Z" fill="none" stroke="#090a0d" stroke-width="1.4" stroke-linejoin="miter"/>`,
         `<polygon points="1,12 11,7.5 9.5,12 11,16.5" fill="url(#spearBlade)" stroke="#111" stroke-width="0.8"/>`,
         `<path d="M26,2 L15,2 L9.5,12 L15,22 L26,22 L26,18.5 L17,18.5 L13.5,12 L17,5.5 L26,5.5 Z" fill="url(#ironGrad)" />`,
         `<polyline points="26,2 15,2 9.5,12 15,22 26,22" fill="none" stroke="url(#silverBevel)" stroke-width="1"/>`,
         `<polyline points="26,5.5 17,5.5 13.5,12 17,18.5 26,18.5" fill="none" stroke="url(#silverBevel)" stroke-width="0.9"/>`,
-        `<path d="M19,3.8 L22,3.8 M20.5,2.7 L20.5,4.8 M19,20.2 L22,20.2 M20.5,19.2 L20.5,21.3" stroke="#cfd5e0" stroke-width="0.8" opacity="0.95"/>`,
+        `<path d="M1.5,12 L11,7.5 M26,2 L15,2 L9.5,12" fill="none" stroke="#e6ebf5" stroke-width="0.65" opacity="0.9"/>`,
+        `<path d="M1.5,12 L11,16.5 M9.5,12 L15,22 L26,22" fill="none" stroke="#9aa1b0" stroke-width="0.55" opacity="0.7"/>`,
+        `<path d="M2,12.35 H9.5" stroke="#121317" stroke-width="0.65"/>`,
+        `<path d="M2,11.75 H9.5" stroke="#dfe4ef" stroke-width="0.65"/>`,
+        `<circle cx="20.5" cy="3.75" r="1.35" fill="#0b0c0f"/>`,
+        `<circle cx="20.5" cy="3.75" r="0.95" fill="#838996" stroke="#cfd5e0" stroke-width="0.3"/>`,
+        `<circle cx="20.2" cy="3.45" r="0.32" fill="#f0f4fc"/>`,
+        `<circle cx="20.5" cy="20.25" r="1.35" fill="#0b0c0f"/>`,
+        `<circle cx="20.5" cy="20.25" r="0.95" fill="#838996" stroke="#cfd5e0" stroke-width="0.3"/>`,
+        `<circle cx="20.2" cy="19.95" r="0.32" fill="#f0f4fc"/>`,
         `</svg>`
     ].join('');
 }
@@ -167,8 +233,7 @@ function buildMinimalBars() {
             `<div class="min-track"><div class="min-layer min-trail min-${key}"></div>` +
             `<div class="min-layer min-fill min-${key}"></div></div>` +
             `<svg class="min-cap"><use href="#${cap}-right"></use></svg>` +
-            daedricFrameMarkup() +
-            (key === 'poise' ? '<span id="min-poise-numbers" hidden></span>' : '');
+            daedricFrameMarkup();
     });
 }
 
@@ -176,11 +241,16 @@ function resetMinimal() {
     if (!minimalState.active) return;
     minimalState.combat = false;
     minimalState.moving = false;
+    minimalState.casting = false;
     for (const [key, stat] of Object.entries(minimalState.stats)) {
-        Object.assign(stat, { current: 0, max: 0, trail: 0, hitAt: 0, initialized: false, enabled: false });
+        Object.assign(stat, { current: 0, value: 0, max: 0, drainDelta: 0, trail: 0, hitAt: 0,
+            initialized: false, enabled: false });
         renderMinimalStat(key);
     }
     minimalState.light = { sneaking: false, level: null };
+    clearTimeout(poiseShieldState.breakTimer);
+    Object.assign(poiseShieldState, { initialized: false, previousPercent: 1, breakUntil: 0, breakTimer: null });
+    document.getElementById('poise-shield-widget').classList.toggle('broken', false);
     renderLightGem();
     document.getElementById('min-poise-numbers').hidden = true;
     refreshVisibility(true);
@@ -193,6 +263,7 @@ function minimalStat(key, current, max, enabled = true) {
         return;
     }
     const percent = max > 0 ? Math.max(0, Math.min(100, 100 * current / max)) : 0;
+    stat.drainDelta = stat.initialized ? Math.max(0, stat.value - current) : 0;
     if (!stat.initialized || stat.max !== max || !stat.enabled) {
         stat.trail = percent;
     } else if (percent < stat.current) {
@@ -201,6 +272,7 @@ function minimalStat(key, current, max, enabled = true) {
         stat.trail = Math.max(stat.trail, percent);
     }
     stat.current = percent;
+    stat.value = current;
     stat.max = max;
     stat.enabled = enabled && max > 0;
     stat.initialized = true;
@@ -212,7 +284,8 @@ function renderMinimalStat(key) {
     const stat = minimalState.stats[key];
     const row = document.getElementById(`min-${key}`);
     const show = stat.enabled && (visibility.alwaysOn || !visibility.dynamicHud || visibility.idle || minimalState.combat ||
-        ((key === 'stamina' || key === 'poise') && minimalState.moving) || stat.current < 100 ||
+        (key === 'magicka' && minimalState.casting) || ((key === 'stamina' || key === 'poise') && minimalState.moving) ||
+        !statIsFull(key, stat) ||
         (key === 'poise' && minimalState.debuffsVisible));
     row.classList.toggle('hidden', !show);
 
@@ -221,15 +294,53 @@ function renderMinimalStat(key) {
 
     row.querySelector('.min-fill').style.transform = `scaleX(${stat.current / 100})`;
     row.querySelector('.min-trail').style.transform = `scaleX(${stat.trail / 100})`;
+    if (key === 'poise') renderPoiseShield(stat, show);
 }
 
-function updateMinimalStats(h, hm, m, mm, s, sm, combat, moving) {
+function setPoiseShieldLevel(name, percent) {
+    const ratio = Math.max(0, Math.min(1, percent));
+    document.getElementById('poise-shield-cavity').style
+        .setProperty(name, `${(ratio * 100).toFixed(3)}%`);
+}
+
+function renderPoiseShield(stat, show) {
+    const widget = document.getElementById('poise-shield-widget');
+    const shieldVisible = minimalState.theme === 'daedric' && poiseShieldState.enabled &&
+        show && stat.enabled && stat.max > 0;
+    widget.hidden = !shieldVisible;
+    setPoiseShieldLevel('--shield-fill-level', stat.current / 100);
+    setPoiseShieldLevel('--shield-trail-level', stat.trail / 100);
+    const meniscus = document.getElementById('poise-shield-meniscus');
+    meniscus.style.opacity = stat.current > 1 && stat.current < 99 ? '0.9' : '0';
+    widget.classList.toggle('low-poise', stat.current > 0 && stat.current <= 25);
+
+    if (poiseShieldState.initialized && stat.enabled && poiseShieldState.previousPercent > 0 && stat.current <= 0) {
+        clearTimeout(poiseShieldState.breakTimer);
+        const stage = document.getElementById('poise-shield-stage');
+        widget.classList.toggle('broken', false);
+        void (stage ? stage.offsetWidth : widget.offsetWidth);
+        widget.classList.toggle('broken', true);
+        poiseShieldState.breakUntil = performance.now() + POISE_SHIELD_BREAK_MS;
+        poiseShieldState.breakTimer = setTimeout(() => {
+            poiseShieldState.breakUntil = 0;
+            poiseShieldState.breakTimer = null;
+            widget.classList.toggle('broken', false);
+        }, POISE_SHIELD_BREAK_MS);
+    } else if (performance.now() >= poiseShieldState.breakUntil && (stat.current > 0 || !stat.enabled)) {
+        widget.classList.toggle('broken', false);
+    }
+    poiseShieldState.previousPercent = stat.current;
+    poiseShieldState.initialized = poiseShieldState.initialized || stat.initialized;
+}
+
+function updateMinimalStats(h, hm, m, mm, s, sm, combat, moving, casting = false) {
     if (!minimalState.active) return;
-    if (typeof combat !== 'boolean' || typeof moving !== 'boolean') {
+    if (typeof combat !== 'boolean' || typeof moving !== 'boolean' || typeof casting !== 'boolean') {
         console.error('Invalid minimalist visibility state'); return;
     }
     minimalState.combat = combat;
     minimalState.moving = moving;
+    minimalState.casting = casting;
     minimalStat('health', h, hm); minimalStat('magicka', m, mm); minimalStat('stamina', s, sm);
     renderMinimalStat('poise');
     refreshVisibility();
@@ -350,17 +461,30 @@ const debuffIconState = { enabled: false, ids: [], ceilingRatio: 1 };
 // Shows the active debuff icons, the Enfeebled ceiling tick and keeps the poise row visible while any debuff is active.
 // Uses only getElementById, hidden, classList and style so it works with the layout test's stub DOM.
 function renderPoiseDebuffIcons() {
-    const active = debuffIconState.enabled ? debuffIconState.ids : [];
-    document.getElementById('poise-debuff-icons').hidden = active.length === 0;
+    const iconActive = debuffIconState.enabled ? debuffIconState.ids : [];
+    const shieldActive = minimalState.theme === 'daedric' && poiseShieldState.enabled ?
+        debuffIconState.ids : [];
+    document.getElementById('poise-debuff-icons').hidden = iconActive.length === 0;
     for (const id of POISE_DEBUFF_IDS) {
-        document.getElementById(`pd-icon-${id}`).classList.toggle('pd-off', !active.includes(id));
+        document.getElementById(`pd-icon-${id}`).classList.toggle('pd-off', !iconActive.includes(id));
     }
     const ceiling = debuffIconState.ceilingRatio;
     const row = document.getElementById('min-poise');
-    for (const id of POISE_DEBUFF_IDS) row.classList.toggle(`debuff-${id}`, active.includes(id));
-    row.classList.toggle('has-ceiling', active.includes('enfeebled') && ceiling < 1);
+    const widget = document.getElementById('poise-shield-widget');
+    for (const id of POISE_DEBUFF_IDS) {
+        row.classList.toggle(`debuff-${id}`, iconActive.includes(id));
+        widget.classList.toggle(`debuff-${id}`, shieldActive.includes(id));
+    }
+    row.classList.toggle('has-ceiling', iconActive.includes('enfeebled') && ceiling < 1);
     row.style.setProperty('--poise-ceiling', String(ceiling));
-    const visible = active.length > 0;
+    const shieldCeilingActive = shieldActive.includes('enfeebled') && ceiling < 1;
+    const shieldCeiling = document.getElementById('poise-shield-ceiling');
+    shieldCeiling.style.opacity = shieldCeilingActive ? '0.95' : '0';
+    widget.classList.toggle('has-ceiling', shieldCeilingActive);
+    widget.style.setProperty('--poise-ceiling', String(ceiling));
+    widget.style.setProperty('--poise-shield-ceiling', `${(ceiling * 100).toFixed(3)}%`);
+    renderPoiseShieldEffects();
+    const visible = (minimalState.theme === 'daedric' ? shieldActive : iconActive).length > 0;
     if (minimalState.debuffsVisible !== visible) {
         minimalState.debuffsVisible = visible;
         if (minimalState.active) {
@@ -398,15 +522,52 @@ const REACTIVE_BAR_EFFECTS = {
     'health-bleed': ['min-health'],
     'health-sapped': ['min-health'],
     'bar-shock': ['min-health', 'min-magicka'],
-    'stamina-frost': ['min-stamina']
+    'stamina-frost': ['min-health', 'min-stamina']
 };
 const reactiveBarState = { enabled: false, ids: [] };
+const REACTIVE_SHIELD_EFFECTS = {
+    'health-sapped': 'effect-sapped',
+    'health-poison': 'effect-poison',
+    'health-fire': 'effect-fire',
+    'stamina-frost': 'effect-cold',
+    'health-bleed': 'effect-bleed'
+};
 
 function renderReactiveBars() {
     const active = reactiveBarState.enabled ? reactiveBarState.ids : [];
     for (const [effect, rows] of Object.entries(REACTIVE_BAR_EFFECTS)) {
         for (const row of rows) document.getElementById(row).classList.toggle(effect, active.includes(effect));
     }
+    const shield = document.getElementById('poise-shield-widget');
+    for (const [effect, shieldClass] of Object.entries(REACTIVE_SHIELD_EFFECTS)) {
+        shield.classList.toggle(shieldClass, active.includes(effect));
+    }
+    renderPoiseShieldEffects();
+}
+
+function renderPoiseShieldEffects() {
+    const widget = document.getElementById('poise-shield-widget');
+    const paints = [
+        [['effect-sapped', 'debuff-sapped'], '#e0c2ff', '#55308a', '#d5a7ff'],
+        [['effect-poison', 'debuff-enfeebled'], '#d7ff5c', '#3f8c16', '#c4ff4d'],
+        [['effect-fire', 'debuff-scorched'], '#ffd166', '#b82d08', '#ff6a1f'],
+        [['effect-cold', 'debuff-numbed'], '#d9fbff', '#1d7fa3', '#9af0ff'],
+        [['effect-bleed', 'debuff-hemorrhaging'], '#ff8a82', '#8c1018', '#ff4d4d']
+    ];
+    let c1 = '#ffe066';
+    let c2 = '#8a6410';
+    let stroke = '#d8b54b';
+    const selected = paints.find(([states]) =>
+        states.some(state => widget.classList.contains(state)));
+    if (selected) {
+        c1 = selected[1];
+        c2 = selected[2];
+        stroke = selected[3];
+    }
+    const cavity = document.getElementById('poise-shield-cavity');
+    cavity.style.setProperty('--shield-c1', c1);
+    cavity.style.setProperty('--shield-c2', c2);
+    document.getElementById('poise-shield-effect-frame').setAttribute('stroke', stroke);
 }
 
 function configureReactiveBars(enabled) {
@@ -519,6 +680,16 @@ function configureTelemetry(enabled) {
     const root = document.getElementById('poise-telemetry');
     root.hidden = !enabled;
     root.setAttribute('aria-hidden', enabled ? 'false' : 'true');
+}
+
+function updateRogueStaggerAlert(alert) {
+    if (typeof alert !== 'string') {
+        console.error('Invalid rogue stagger alert');
+        return;
+    }
+    const row = document.getElementById('pt-rogue-stagger');
+    row.hidden = !alert;
+    row.textContent = alert;
 }
 
 function updatePoiseTelemetry(data) {

@@ -67,7 +67,7 @@ Store a ring buffer of the last **5** valid poise hit events involving the playe
 
 ### C. Equipped Weapon Benchmark (Player)
 Compute on player equipment change so the UI can show live "Hits-to-Break" estimates:
-- `playerUnblockedLightHit`: `(settings.baseHitDamage + rightHandWeight * settings.weaponWeightDamageMultiplier) * (isTwoHanded ? settings.twoHandedMultiplier : 1.0F) * settings.unblockedPhysicalMultiplier`
+- `playerUnblockedLightHit`: `(settings.baseHitDamage + rightHandWeight * settings.weaponWeightDamageMultiplier) * (isTwoHanded ? settings.twoHandedMultiplier : 1.0F)`
 - `playerUnblockedPowerHit`: `playerUnblockedLightHit * settings.powerAttackMultiplier`
 
 ---

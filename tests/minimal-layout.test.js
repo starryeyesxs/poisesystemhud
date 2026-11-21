@@ -18,7 +18,12 @@ function createView() {
             elements.set(id, {
                 id, hidden: false, textContent: '', attributes: {}, dataset: {},
                 style: { setProperty: (key, value) => properties.set(key, value), properties },
-                classList: { toggle: (key, on) => on ? classes.add(key) : classes.delete(key), contains: key => classes.has(key) },
+                classList: {
+                    add: key => classes.add(key),
+                    remove: key => classes.delete(key),
+                    toggle: (key, on) => on ? classes.add(key) : classes.delete(key),
+                    contains: key => classes.has(key)
+                },
                 setAttribute(name, value) { this.attributes[name] = value; }
             });
         }
@@ -155,6 +160,31 @@ test('layout visibility, weather, and gem respond independently', () => {
     assert.equal(v.errors.length, 0);
 });
 
+test('custom HUD visibility leaves standalone Poise, Weather, target Poise and telemetry active', () => {
+    const v = createView(), c = v.context;
+    const layout = v.element('minimal-layout');
+    c.configureLayouts(true, true);
+    c.configureCustomHud(false);
+    assert.ok(layout.classList.contains('custom-hud-disabled'));
+    assert.equal(layout.hidden, false);
+    assert.equal(v.element('world-widget').hidden, false);
+
+    c.updateWorldWidget('Wilderness', 14, 30, 17, 8, 201, 'rain', false);
+    c.updateMinimalPoise(true, 42.5, 65, true);
+    c.updateTargetPoise(true, 'Bandit', 'Heavy', 20, 100, false);
+    c.configureTelemetry(true);
+    assert.equal(v.element('world-weather').textContent, 'rain');
+    assert.equal(v.element('min-poise-numbers').hidden, false);
+    assert.equal(v.element('min-poise-numbers').textContent, '42.5 / 65.0');
+    assert.ok(v.element('target-poise').classList.contains('show'));
+    assert.equal(v.element('poise-telemetry').hidden, false);
+
+    c.configureCustomHud(true);
+    assert.ok(!layout.classList.contains('custom-hud-disabled'));
+    c.configureCustomHud('false');
+    assert.equal(v.errors.length, 1);
+});
+
 test('visibility settings control idle fading and always-on bars', () => {
     const v = createView(), c = v.context;
     const layout = v.element('minimal-layout');
@@ -182,6 +212,33 @@ test('visibility settings control idle fading and always-on bars', () => {
     assert.ok(!layout.classList.contains('hud-idle'));
     c.configureVisibility(false, true, -1, 3);
     assert.equal(v.errors.length, 1);
+});
+
+test('resource idle detection tolerates float drift while preserving casting, sprinting, and drain wakeups', () => {
+    const v = createView(), c = v.context;
+    const layout = v.element('minimal-layout');
+    c.configureLayouts(true, true);
+    c.configureVisibility(false, true, 0, 0);
+
+    c.updateMinimalStats(199, 200, 297.5, 300, 99.1, 100, false, false);
+    v.advance(0);
+    assert.ok(layout.classList.contains('hud-idle'));
+
+    c.updateMinimalStats(199, 200, 298, 300, 99.1, 100, false, false, true);
+    assert.ok(!layout.classList.contains('hud-idle'));
+    assert.ok(!v.element('min-magicka').classList.contains('hidden'));
+
+    c.updateMinimalStats(199, 200, 298, 300, 99.1, 100, false, true, false);
+    assert.ok(!layout.classList.contains('hud-idle'));
+    assert.ok(!v.element('min-stamina').classList.contains('hidden'));
+
+    c.updateMinimalStats(199, 200, 300, 300, 99.1, 100, false, true, false);
+    c.updateMinimalStats(199, 200, 298.2, 300, 99.1, 100, false, false, false);
+    assert.ok(!layout.classList.contains('hud-idle'));
+    assert.ok(!v.element('min-magicka').classList.contains('hidden'));
+    c.updateMinimalStats(199, 200, 298.2, 300, 99.1, 100, false, false, false);
+    v.advance(0);
+    assert.ok(layout.classList.contains('hud-idle'));
 });
 
 test('minimalist position accepts the documented ranges', () => {

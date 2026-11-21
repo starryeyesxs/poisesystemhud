@@ -2,6 +2,9 @@
 #include "creature_tier.h"
 #include "hook_call.h"
 #include "stagger_gate.h"
+#ifdef ARPGHUD_ROGUE_STAGGER_DIAGNOSTICS
+#include "rogue_stagger_diagnostic.h"
+#endif
 #ifdef ARPGHUD_STAGGER_DIAGNOSTICS
 #include "stagger_diagnostic.h"
 #endif
@@ -104,8 +107,8 @@ namespace
 	std::atomic<bool> gateNpc{ false };
 	std::atomic<bool> gateCreature{ false };
 	std::atomic<bool> gateTimedBash{ false };
-	std::atomic<bool> gateDebuffs{ false };
-	std::atomic<bool> reactiveBarsEnabled{ false };
+		std::atomic<bool> gateDebuffs{ false };
+		std::atomic<bool> reactiveBarsEnabled{ false };
 	// Gameplay-clock time of the last hostile shock hit on the player; far in the past when none.
 	constexpr double kNoShock = -1.0e9;
 	constexpr double kShockHitSeconds = 1.5;
@@ -161,8 +164,8 @@ namespace
 		gateNpc.store(npcInstalled && configuration.npcEnabled, std::memory_order_relaxed);
 		gateCreature.store(npcInstalled && configuration.enableCreaturePoise, std::memory_order_relaxed);
 		gateTimedBash.store(configuration.allowTimedBashStaggers, std::memory_order_relaxed);
-		gateDebuffs.store(configuration.enablePoiseDebuffs, std::memory_order_relaxed);
-	}
+				gateDebuffs.store(configuration.enablePoiseDebuffs, std::memory_order_relaxed);
+			}
 
 	// Requires stateMutex to be held.
 	BuiltinPoise::ActorTelemetry DescribePoise(const BuiltinPoise::State& poise, std::string name, std::string tier)
@@ -916,6 +919,9 @@ namespace
 		sample.eligible = eligible;
 		StaggerDiagnostic::OnDamageSample(sample);
 #endif
+#ifdef ARPGHUD_ROGUE_STAGGER_DIAGNOSTICS
+		RogueStaggerCapture::NotePhysicalHit(target, data ? data->aggressor.get().get() : nullptr, data);
+#endif
 		if (eligible && data && Active()) {
 			aggressor = data->aggressor.get();
 			BuiltinPoise::Hit hit;
@@ -951,6 +957,7 @@ namespace
 				if (installed && inGame) {
 					if (player) {
 						state.SetDebuffs(debuffs);
+						state.SetPlayerTarget(true);
 #ifdef ARPGHUD_STAGGER_DIAGNOSTICS
 						sample.poiseBefore = state.current;
 						sample.poiseMax = state.maximum;
@@ -973,6 +980,7 @@ namespace
 						}
 						hitPoise = &entry.poise;
 						entry.poise.SetDebuffs(debuffs);
+						entry.poise.SetPlayerTarget(false);
 						entry.lastUpdate = gameplaySeconds;
 						CatchUp(entry);
 #ifdef ARPGHUD_STAGGER_DIAGNOSTICS
@@ -988,6 +996,7 @@ namespace
 						if (it != npcStates.end() && it->second.handle == targetHandle && it->second.tier == tier) {
 							hitPoise = &it->second.poise;
 							it->second.poise.SetDebuffs(debuffs);
+							it->second.poise.SetPlayerTarget(false);
 							it->second.lastUpdate = gameplaySeconds;
 							CatchUp(it->second);
 #ifdef ARPGHUD_STAGGER_DIAGNOSTICS
@@ -1016,13 +1025,27 @@ namespace
 				}
 			}
 		}
-		{
-			std::optional<StaggerGate::ScopedTimedBash> timedBash;
-			if (data && data->flags.any(RE::HitData::Flag::kTimedBash)) {
-				timedBash.emplace();
-			}
-			originalHit(target, data);
-		}
+		bool suppressHitPushBack = false;
+				{
+					std::lock_guard lock(stateMutex);
+					const bool managed = eligible &&
+						(player || (npcInstalled && BuiltinPoise::TierEnabled(configuration, tier)));
+					suppressHitPushBack = installed && inGame && configuration.enabled && managed &&
+						!configuration.enableHitPushBack;
+				}
+				if (data && suppressHitPushBack) {
+					data->pushBack = 0.0F;
+				}
+				{
+					std::optional<StaggerGate::ScopedTimedBash> timedBash;
+					if (data && data->flags.any(RE::HitData::Flag::kTimedBash)) {
+						timedBash.emplace();
+					}
+					originalHit(target, data);
+				}
+#ifdef ARPGHUD_ROGUE_STAGGER_DIAGNOSTICS
+		RogueStaggerCapture::NotePhysicalHitComplete(target, data);
+#endif
 #ifdef ARPGHUD_STAGGER_DIAGNOSTICS
 		sample.handled = result.handled;
 		sample.broke = result.broke;
@@ -1196,8 +1219,8 @@ void BuiltinPoise::Configure(const Settings& settings)
 		settings.enabled, installed, settings.basePoise, settings.armorWeightMultiplier,
 		settings.regenDelaySeconds, settings.regenRatePerSecond, settings.staggerImmunitySeconds,
 		settings.suppressVanillaStaggers);
-	logger::info("Creature poise configured: enabled={}, creature hit multiplier={}, tiers light={} medium={} heavy={} boss={}, boss regen multiplier={}.",
-		settings.enableCreaturePoise, settings.creatureMultiplier, settings.lightCreaturePoiseMultiplier,
+	logger::info("Creature poise configured: enabled={}, creature base hit damage={}, tiers light={} medium={} heavy={} boss={}, boss regen multiplier={}.",
+		settings.enableCreaturePoise, settings.creatureBaseHitPoiseDamage, settings.lightCreaturePoiseMultiplier,
 		settings.mediumCreaturePoiseMultiplier, settings.heavyCreaturePoiseMultiplier,
 		settings.bossCreaturePoiseMultiplier, settings.bossCreatureRegenMultiplier);
 	logger::info("Poise baseline configured: physical damage multiplier={} cap={}, light armor rating multiplier={} cap={}, flesh efficiency light={} heavy={}.",
@@ -1335,6 +1358,7 @@ void BuiltinPoise::ApplyMagicDamage(RE::Actor* target, RE::Actor* attacker, floa
 				state.SetMaximum(MaximumPoise(configuration, CreatureTier::Standard, armor, flesh, nullptr));
 			}
 			state.SetDebuffs(debuffs);
+			state.SetPlayerTarget(true);
 			result = state.ApplyDamage(configuration, damage);
 		} else if (npcInstalled && TierEnabled(configuration, tier) && handle) {
 			auto it = npcStates.find(id);
@@ -1356,6 +1380,7 @@ void BuiltinPoise::ApplyMagicDamage(RE::Actor* target, RE::Actor* attacker, floa
 				entry.poise.ApplyTier(configuration, tier);
 			}
 			entry.poise.SetDebuffs(debuffs);
+			entry.poise.SetPlayerTarget(false);
 			entry.lastUpdate = gameplaySeconds;
 			CatchUp(entry);
 			result = entry.poise.ApplyDamage(configuration, damage);
@@ -1459,6 +1484,48 @@ bool BuiltinPoise::ShouldSuppressStagger(RE::Actor* actor)
 		(StaggerGate::InTimedBash() && gateTimedBash.load(std::memory_order_relaxed));
 	return StaggerGate::ShouldSuppress(true, managed, allowed);
 }
+
+#ifdef ARPGHUD_ROGUE_STAGGER_DIAGNOSTICS
+bool BuiltinPoise::ReadDiagnosticState(RE::Actor* actor, DiagnosticState& diagnostic)
+{
+	diagnostic = {};
+	if (!actor) {
+		return false;
+	}
+	std::lock_guard lock(stateMutex);
+	if (!installed || !inGame || !configuration.enabled) {
+		return false;
+	}
+	const State* poise = nullptr;
+	if (actor->IsPlayerRef()) {
+		poise = &state;
+	} else {
+		const auto it = npcStates.find(actor->GetFormID());
+		if (it != npcStates.end() && it->second.handle == RE::ActorHandle(actor)) {
+			poise = &it->second.poise;
+		}
+	}
+	if (!poise || poise->maximum <= 0.0F) {
+		return false;
+	}
+	diagnostic.current = poise->current;
+	diagnostic.maximum = poise->maximum;
+	diagnostic.immunity = poise->immunity;
+	bool first = true;
+	for (std::size_t i = 0; i < kDebuffCount; ++i) {
+		if (!poise->debuffs.active[i] && !(i == static_cast<std::size_t>(DebuffId::sapped) &&
+											poise->debuffs.sappedPulse > 0.0F)) {
+			continue;
+		}
+		diagnostic.debuffs += (first ? "" : "|") + std::string{ DebuffName(static_cast<DebuffId>(i)) };
+		first = false;
+	}
+	if (diagnostic.debuffs.empty()) {
+		diagnostic.debuffs = "none";
+	}
+	return true;
+}
+#endif
 
 std::string BuiltinPoise::DescribeActorClass(RE::Actor* actor)
 {

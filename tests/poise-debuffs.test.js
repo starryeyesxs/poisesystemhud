@@ -111,6 +111,7 @@ test('invalid debuff payloads are rejected without changing the icons', () => {
 test('an active debuff keeps the poise row visible and the bars awake, then releases them', () => {
     const view = createView();
     const { context } = view;
+    context.configureHudTheme('minimalist');
     context.configureLayouts(false, false);
     context.configureVisibility(false, true, 0, 3);
     // Before the vitals have reported, a full poise bar is hidden; an active debuff shows it.
@@ -199,7 +200,7 @@ test('icons are 24px with a 6px gap and every debuff styles the poise bar throug
     assert.match(css, /#min-poise\.debuff-scorched \{[^}]*rgba\(224, 122, 42,/);
     // No new elements or timers: the states are plain classes on the existing row.
     assert.equal((js.match(/setInterval\(/g) || []).length, 1);
-    assert.match(js, /row\.classList\.toggle\(`debuff-\$\{id\}`, active\.includes\(id\)\)/);
+    assert.match(js, /row\.classList\.toggle\(`debuff-\$\{id\}`, iconActive\.includes\(id\)\)/);
     assert.equal((read('view/index.html').match(/id="min-poise"/g) || []).length, 1);
 });
 
@@ -223,7 +224,7 @@ test('fill-tinting debuffs share one specificity and resolve in the order Sapped
 });
 
 test('[Poise Debuffs] and the HUD icon key are shipped with the specified defaults and ranges', () => {
-    const ini = read('poisesystemhud.ini'), main = read('src/main.cpp');
+    const ini = read('TruePoise.ini'), main = read('src/main.cpp');
     const section = ini.split('[Poise Debuffs]')[1];
     assert.ok(section && !section.includes('[Poise]') && !section.includes('[HUD]'));
     assert.match(ini.split('[Poise]')[0], /^bShowPoiseDebuffIcons=true$/m);
@@ -292,7 +293,7 @@ test('HUD icons are driven from the poll independently of telemetry, and reappli
     const poll = main.slice(main.indexOf('void PollHud()'), main.indexOf('VOID CALLBACK TimerCallback'));
     assert.match(poll, /SendPoise\(\);\s*SendPoiseTelemetry\(\);\s*SendPoiseDebuffIcons\(\);/);
     const send = main.slice(main.indexOf('void SendPoiseDebuffIcons()'), main.indexOf('void ConfigurePoiseDebuffIconsView()'));
-    assert.match(send, /if \(!settings\.showPoiseDebuffIcons\) \{\s*return;/);
+    assert.match(send, /if \(!settings\.showPoiseDebuffIcons && !settings\.enablePoiseShield\) \{\s*return;/);
     assert.doesNotMatch(send, /showPoiseTelemetry|TelemetryJson|ReadTelemetry/);
     assert.match(send, /BuiltinPoise::ReadPlayerDebuffs\(view\)/);
     assert.match(send, /updatePoiseDebuffs\(\[\], 1\)/);
@@ -367,7 +368,7 @@ test('lingering effects and absorbs never reach the direct poise damage routes',
     const maximum = state.slice(state.indexOf('inline MaximumBreakdown ComputeMaximumPoise('), state.indexOf('[[nodiscard]] constexpr bool TierEnabled'));
     assert.doesNotMatch(maximum, /debuff|Debuff/);
     assert.match(state, /const float rate = fx\.sapped \? 0\.0F : settings\.regenRatePerSecond \* regenMultiplier \* fx\.regenRateMult;/);
-    assert.match(state, /regenDelay = settings\.regenDelaySeconds \+ ResolveDebuffEffects\(settings, debuffs\)\.delayBonus;/);
+    assert.match(state, /const auto fx = ResolveDebuffEffects\(settings, debuffs\);\s*regenDelay = settings\.regenDelaySeconds \+ fx\.delayBonus;/);
     assert.match(state, /if \(hit\.type != HitType::projectile\) \{\s*const float scorched = ResolveDebuffEffects/);
 });
 
@@ -400,7 +401,7 @@ test('NPC and creature debuffs are scanned outside the magic build on refresh an
     assert.match(poise, /refresh \? ScanDebuffs\(actor\)/);
     assert.match(poise, /valid \? ScanDebuffs\(actor\.get\(\)\)/);
     assert.match(poise, /const auto debuffs = ScanDebuffs\(target\);\s*const bool recordHit/);
-    assert.match(poise, /entry\.poise\.SetDebuffs\(debuffs\);\s*entry\.lastUpdate = gameplaySeconds;\s*CatchUp\(entry\);\s*result = entry\.poise\.ApplyDamage/);
+    assert.match(poise, /entry\.poise\.SetDebuffs\(debuffs\);\s*entry\.poise\.SetPlayerTarget\(false\);\s*entry\.lastUpdate = gameplaySeconds;\s*CatchUp\(entry\);\s*result = entry\.poise\.ApplyDamage/);
 });
 
 test('channeled spells still select, track and scan the target, and telemetry rescans it live', () => {

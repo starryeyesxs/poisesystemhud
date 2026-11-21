@@ -9,7 +9,7 @@ const poise = read('src', 'builtin_poise.cpp');
 const state = read('src', 'builtin_poise_state.h');
 const main = read('src', 'main.cpp');
 const menu = read('src', 'menu_framework.cpp');
-const ini = read('poisesystemhud.ini');
+const ini = read('TruePoise.ini');
 const diagnostic = read('src', 'stagger_diagnostic.cpp');
 const poiseIni = ini.split('[Poise]')[1];
 
@@ -20,10 +20,11 @@ const defaults = {
     fHeavyCreaturePoiseMultiplier: ['3.75', 'heavyCreaturePoiseMultiplier', 'get_heavyCreaturePoiseMultiplier'],
     fBossCreaturePoiseMultiplier: ['6.0', 'bossCreaturePoiseMultiplier', 'get_bossCreaturePoiseMultiplier'],
     fBossCreatureRegenMultiplier: ['1.5', 'bossCreatureRegenMultiplier', 'get_bossCreatureRegenMultiplier'],
-    fLightCreatureDamageMultiplier: ['0.6', 'lightCreatureDamageMultiplier', 'get_lightCreatureDamageMultiplier'],
-    fMediumCreatureDamageMultiplier: ['1.2', 'mediumCreatureDamageMultiplier', 'get_mediumCreatureDamageMultiplier'],
-    fHeavyCreatureDamageMultiplier: ['1.375', 'heavyCreatureDamageMultiplier', 'get_heavyCreatureDamageMultiplier'],
-    fBossCreatureDamageMultiplier: ['2.25', 'bossCreatureDamageMultiplier', 'get_bossCreatureDamageMultiplier'],
+    fCreatureBaseHitPoiseDamage: ['5.5', 'creatureBaseHitPoiseDamage', 'get_creatureBaseHitPoiseDamage'],
+    fLightCreatureDamageMultiplier: ['0.75', 'lightCreatureDamageMultiplier', 'get_lightCreatureDamageMultiplier'],
+    fMediumCreatureDamageMultiplier: ['1.25', 'mediumCreatureDamageMultiplier', 'get_mediumCreatureDamageMultiplier'],
+    fHeavyCreatureDamageMultiplier: ['1.65', 'heavyCreatureDamageMultiplier', 'get_heavyCreatureDamageMultiplier'],
+    fBossCreatureDamageMultiplier: ['2.40', 'bossCreatureDamageMultiplier', 'get_bossCreatureDamageMultiplier'],
     fCreatureStaggerImmunitySeconds: ['2.0', 'creatureStaggerImmunitySeconds', 'get_creatureStaggerImmunitySeconds'],
     fSummonPoiseMultiplier: ['1.5', 'summonPoiseMultiplier', 'get_summonPoiseMultiplier'],
     fNPCMagicPoiseMultiplier: ['0.6', 'npcMagicPoiseMultiplier', 'get_npcMagicPoiseMultiplier'],
@@ -53,10 +54,11 @@ test('creature settings are shipped, loaded, exported, shown in the menu and res
     assert.match(state, /bool enableCreaturePoise = true;/);
 });
 
-test('creature multiplier defaults to 0.8 everywhere', () => {
-    assert.match(state, /float creatureMultiplier = 0\.8F;/);
-    assert.match(poiseIni, /^fCreatureMultiplier=0\.8$/m);
-    assert.match(menu, /QueueIniWrite\("fCreatureMultiplier", "0\.8", "Poise"\)/);
+test('creature hits use an explicit base with no legacy global multiplier', () => {
+    assert.match(state, /float creatureBaseHitPoiseDamage = 5\.5F;/);
+    assert.doesNotMatch(state, /creatureMultiplier|unblockedPhysicalMultiplier/);
+    assert.doesNotMatch(poiseIni, /fCreatureMultiplier|fUnblockedPhysicalMultiplier/);
+    assert.doesNotMatch(menu, /get_creatureMultiplier|get_unblockedPhysicalMultiplier|fCreatureMultiplier|fUnblockedPhysicalMultiplier/);
 });
 
 test('creature hits are classified by attacker keyword before any weapon path', () => {
@@ -125,7 +127,7 @@ test('shield and weapon blocks use separate multipliers and the legacy key is go
 test('creature classification, damage tiers, immunity and summons are wired into the hit path', () => {
     assert.match(poise, /BuiltinPoise::ResolveActorTier\(raceTier, npc, actor->GetName\(\)/);
     assert.match(poise, /hit\.attackerTier = hit\.type == BuiltinPoise::HitType::creature \? ClassifyActor\(aggressor\)/);
-    assert.match(state, /const float tierMultiplier = CreatureDamageTierMultiplier\(settings, hit\.attackerTier\);\s*damage \*= settings\.creatureMultiplier \* tierMultiplier;/);
+    assert.match(state, /const bool creatureHit = hit\.type == HitType::creature;[\s\S]*settings\.creatureBaseHitPoiseDamage \+ raw\.bonus[\s\S]*damage \*= tierMultiplier;/);
     assert.match(state, /creatureImmunity \? settings\.creatureStaggerImmunitySeconds : settings\.staggerImmunitySeconds/);
     assert.match(poise, /actor->IsCommandedActor\(\) \? settings\.summonPoiseMultiplier : 1\.0F/);
     assert.match(poise, /ComputeMaximumPoise\(settings, tier, armor, flesh, SummonScale\(settings, actor\), !actor \|\| actor->IsPlayerRef\(\)\)/);
@@ -154,7 +156,7 @@ test('magic from any caster, cloaks and explosions reach poise with the NPC mult
 });
 
 test('target poise bar is configurable, tracked by the backend and rendered upper-right', () => {
-    assert.match(read('poisesystemhud.ini').split('[Poise]')[0], /^bShowTargetPoiseBar=false$/m);
+    assert.match(read('TruePoise.ini').split('[Poise]')[0], /^bShowTargetPoiseBar=false$/m);
     assert.match(main, /L"bShowTargetPoiseBar"[^\n]*settings\.showTargetPoiseBar/);
     assert.match(main, /get_showTargetPoiseBar\(\) \{ return &settings\.showTargetPoiseBar; \}/);
     assert.match(menu, /Checkbox\("Show Target Poise Bar##widgets"/);

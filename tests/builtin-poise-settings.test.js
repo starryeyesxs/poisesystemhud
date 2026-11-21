@@ -4,16 +4,16 @@ const path = require('node:path');
 const test = require('node:test');
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'main.cpp'), 'utf8').replace(/\r\n/g, '\n');
-const ini = fs.readFileSync(path.join(__dirname, '..', 'poisesystemhud.ini'), 'utf8');
+const ini = fs.readFileSync(path.join(__dirname, '..', 'TruePoise.ini'), 'utf8');
 const names = [
-    'bEnableBuiltInPoise', 'bEnableNPCPoise', 'bSuppressVanillaStaggers', 'bEnableCreaturePoise',
+    'bEnableBuiltInPoise', 'bEnableNPCPoise', 'bSuppressVanillaStaggers', 'bEnableHitPushBack', 'bEnableCreaturePoise',
     'fLightCreaturePoiseMultiplier', 'fMediumCreaturePoiseMultiplier', 'fHeavyCreaturePoiseMultiplier',
     'fBossCreaturePoiseMultiplier', 'fBossCreatureRegenMultiplier', 'fBasePoise', 'fArmorWeightMultiplier',
     'fShieldWeightPoiseMultiplier', 'bApplyShieldWeightToNPCs',
-    'fBaseHitPoiseDamage', 'fWeaponWeightDamageMultiplier', 'fTwoHandedMultiplier',
-    'fShieldBashMultiplier', 'fWeaponBashMultiplier', 'bAllowTimedBashStaggers', 'fCreatureMultiplier', 'fProjectileMultiplier',
+    'fBaseHitPoiseDamage', 'fCreatureBaseHitPoiseDamage', 'fWeaponWeightDamageMultiplier', 'fTwoHandedMultiplier',
+    'fShieldBashMultiplier', 'fWeaponBashMultiplier', 'bAllowTimedBashStaggers', 'fProjectileMultiplier',
     'fPowerAttackMultiplier', 'fShieldBlockedPhysicalMultiplier', 'fWeaponBlockedPhysicalMultiplier',
-    'fUnblockedPhysicalMultiplier', 'fRegenDelaySeconds',
+    'fRegenDelaySeconds',
     'fLightCreatureDamageMultiplier', 'fMediumCreatureDamageMultiplier', 'fHeavyCreatureDamageMultiplier',
     'fBossCreatureDamageMultiplier', 'fCreatureStaggerImmunitySeconds', 'fSummonPoiseMultiplier',
     'fNPCMagicPoiseMultiplier',
@@ -33,6 +33,8 @@ test('all poise tuning keys are shipped and reloaded through the Poise section',
     assert.match(reload, /LoadSettings\(\)/);
     assert.doesNotMatch(reload, /BuiltinPoise::Install/);
     assert.match(source, /BuiltinPoise::Configure\(poiseSettings\)/);
+    assert.doesNotMatch(ini, /fUnblockedPhysicalMultiplier|fCreatureMultiplier/);
+    assert.doesNotMatch(source, /fUnblockedPhysicalMultiplier|fCreatureMultiplier/);
 });
 
 test('baseline progression keys are ranged, exported, slidered and reset', () => {
@@ -126,7 +128,7 @@ test('shield settings support negative values, menu persistence, live configurat
     const menu = fs.readFileSync(path.join(__dirname, '..', 'src', 'menu_framework.cpp'), 'utf8');
     assert.match(source, /poiseSettings\.shieldWeightPoiseMultiplier, -1\.0F, 2\.0F, L"Poise"/);
     assert.match(source, /readBool\(L"bApplyShieldWeightToNPCs", "bApplyShieldWeightToNPCs", poiseSettings\.applyShieldWeightToNPCs, L"Poise"\)/);
-    assert.match(source, /changedKey == "fShieldWeightPoiseMultiplier" \|\| changedKey == "bApplyShieldWeightToNPCs"\)\s*\{\s*BuiltinPoise::Configure\(poiseSettings\)/);
+    assert.match(source, /changedKey == "fShieldWeightPoiseMultiplier" \|\| changedKey == "bApplyShieldWeightToNPCs" \|\|\s*changedKey == "bEnableHitPushBack"\)\s*\{\s*BuiltinPoise::Configure\(poiseSettings\)/);
     assert.match(menu, /SliderFloat\("Shield Weight Poise Multiplier##poise", shieldWeightMult, -1\.0f, 2\.0f/);
     assert.match(menu, /std::round\(\*shieldWeightMult \* 20\.0f\) \/ 20\.0f/);
     assert.match(menu, /Checkbox\("Apply Shield Weight to NPCs##poise"/);
@@ -143,7 +145,7 @@ test('maximum-poise math lives in the state header with efficiency priority and 
     assert.match(state, /flesh\.dragonhide \? settings\.dragonhidePoiseBonus : 0\.0F/);
     const efficiency = state.slice(state.indexOf('inline float FleshEfficiency('), state.indexOf('inline MaximumBreakdown ComputeMaximumPoise('));
     assert.ok(efficiency.indexOf('armor.hasHeavy') < efficiency.indexOf('armor.hasLight'));
-    assert.match(state, /float damage = settings\.baseHitDamage \+ weight \* settings\.weaponWeightDamageMultiplier \+ raw\.bonus;/);
+    assert.match(state, /float damage = creatureHit \? settings\.creatureBaseHitPoiseDamage \+ raw\.bonus :\s*settings\.baseHitDamage \+ weight \* settings\.weaponWeightDamageMultiplier \+ raw\.bonus;/);
     assert.match(state, /float rawBonus = 0\.0F;\s*bool rawCapped = false;/);
     const poise = fs.readFileSync(path.join(__dirname, '..', 'src', 'builtin_poise.cpp'), 'utf8');
     assert.match(poise, /bool BuiltinPoise::ReadTelemetry\(TelemetrySnapshot& snapshot\)/);
@@ -151,22 +153,26 @@ test('maximum-poise math lives in the state header with efficiency priority and 
     assert.match(poise, /fleshBonus = poise\.fleshBonusPoise/);
 });
 
-test('physical hit defaults are lowered together everywhere and shield blocks drop the raw damage bonus', () => {
+test('physical hit defaults are cohesive everywhere and shield blocks drop the raw damage bonus', () => {
     const root = path.join(__dirname, '..');
     const read = file => fs.readFileSync(path.join(root, file), 'utf8').replace(/\r\n/g, '\n');
     const state = read('src/builtin_poise_state.h'), menu = read('src/menu_framework.cpp'), guide = read('POISE_GUIDE.txt');
     assert.match(state, /float baseHitDamage = 6\.0F;/);
-    assert.match(state, /float weaponWeightDamageMultiplier = 0\.375F;/);
+    assert.match(state, /float creatureBaseHitPoiseDamage = 5\.5F;/);
+    assert.match(state, /float weaponWeightDamageMultiplier = 0\.35F;/);
     assert.match(ini.split('[Poise]')[1], /^fBaseHitPoiseDamage=6\.0$/m);
-    assert.match(ini.split('[Poise]')[1], /^fWeaponWeightDamageMultiplier=0\.375$/m);
+    assert.match(ini.split('[Poise]')[1], /^fCreatureBaseHitPoiseDamage=5\.5$/m);
+    assert.match(ini.split('[Poise]')[1], /^fWeaponWeightDamageMultiplier=0\.35$/m);
     assert.match(menu, /QueueIniWrite\("fBaseHitPoiseDamage", "6\.0", "Poise"\)/);
-    assert.match(menu, /QueueIniWrite\("fWeaponWeightDamageMultiplier", "0\.375", "Poise"\)/);
+    assert.match(menu, /QueueIniWrite\("fCreatureBaseHitPoiseDamage", "5\.5", "Poise"\)/);
+    assert.match(menu, /QueueIniWrite\("fWeaponWeightDamageMultiplier", "0\.35", "Poise"\)/);
     assert.match(guide, /^fBaseHitPoiseDamage=6\.0 /m);
-    assert.match(guide, /^fWeaponWeightDamageMultiplier=0\.375 /m);
+    assert.match(guide, /^fCreatureBaseHitPoiseDamage=5\.5 /m);
+    assert.match(guide, /^fWeaponWeightDamageMultiplier=0\.35 /m);
     // Raw weapon damage scaling is untouched for open hits and weapon blocks; only a shield block skips it.
     assert.match(ini, /fPhysicalDamagePoiseMultiplier=0\.05/);
     assert.match(state, /const bool shieldBlocked = hit\.blocked && hit\.shieldBlocked;\s*const auto raw = shieldBlocked \? PhysicalBonus\{\} : PhysicalDamageBonus\(settings, hit\.physicalDamage\);/);
-    assert.match(state, /float damage = settings\.baseHitDamage \+ weight \* settings\.weaponWeightDamageMultiplier \+ raw\.bonus;/);
+    assert.match(state, /float damage = creatureHit \? settings\.creatureBaseHitPoiseDamage \+ raw\.bonus :\s*settings\.baseHitDamage \+ weight \* settings\.weaponWeightDamageMultiplier \+ raw\.bonus;/);
     // Magic burst uses the updated multiplier and capped magnitude curve.
     assert.match(state, /float magicBurstPoiseMultiplier = 1\.2F;/);
     assert.match(ini, /^fMagicBurstPoiseMultiplier=1\.20$/m);

@@ -54,7 +54,7 @@ test('reactive classes stay off until enabled and land on the right bars', () =>
     view.context.updateReactiveBars(['health-poison', 'stamina-frost', 'bar-shock']);
     assert.deepEqual(['min-health', 'min-magicka', 'min-stamina'].map(id => classesOf(view, id)), [[], [], []]);
     view.context.configureReactiveBars(true);
-    assert.deepEqual(classesOf(view, 'min-health'), ['health-poison', 'bar-shock']);
+    assert.deepEqual(classesOf(view, 'min-health'), ['health-poison', 'bar-shock', 'stamina-frost']);
     assert.deepEqual(classesOf(view, 'min-magicka'), ['bar-shock']);
     assert.deepEqual(classesOf(view, 'min-stamina'), ['stamina-frost']);
     view.context.updateReactiveBars(['health-fire', 'health-bleed', 'health-sapped']);
@@ -108,12 +108,14 @@ test('every reactive state is styled with the specified colors and never hides b
     assert.match(css, /#min-health\.health-poison \.min-health \{ --c1: #7ab82e; --c2: #5a941e; \}/);
     assert.match(css, /#min-health\.health-poison \{[^}]*rgba\(122, 184, 46,/);
     assert.match(css, /#min-health\.health-sapped \.min-health \{ --c1: #9d7ae0;/);
-    assert.match(css, /#min-health\.health-fire \.min-track \{[^}]*#e07a2a/);
+    assert.match(css, /#min-health\.health-fire \.min-health \{ --c1: #ff7b29; --c2: #b82d08; \}/);
+    assert.match(css, /#min-health\.stamina-frost \.min-health \{ --c1: #7ce8ff; --c2: #1d7fa3; \}/);
     assert.match(css, /#min-health\.health-fire \{[^}]*rgba\(224, 122, 42,/);
     assert.match(css, /#min-health\.health-bleed \.min-track \{ animation: rb-bleed-border/);
     assert.match(css, /@keyframes rb-bleed-border \{[^@]*#c43a3a/);
     assert.match(css, /#min-health\.bar-shock \.min-track, #minimal-layout #min-magicka\.bar-shock \.min-track \{\s*animation: rb-shock/);
-    assert.match(css, /@keyframes rb-shock \{[^@]*#4da6ff[^@]*#9ad8ff/);
+    assert.match(css, /@keyframes rb-health-shock-fill \{[^@]*#d9f7ff[^@]*#2eb8ff/);
+    assert.match(css, /@keyframes rb-magicka-shock-fill \{/);
     assert.match(css, /#min-stamina\.stamina-frost \.min-track \{[^}]*#3fb5c8/);
     const block = css.slice(css.indexOf('/* Reactive resource bars.'));
     assert.doesNotMatch(block, /calc\(|var\(--poise-ceiling|display: none|visibility: hidden|opacity: 0[;\s]/);
@@ -121,7 +123,7 @@ test('every reactive state is styled with the specified colors and never hides b
 });
 
 test('the reactive bar setting is shipped, loaded, in the menu, reset, polled and reapplied', () => {
-    const ini = read('poisesystemhud.ini');
+    const ini = read('TruePoise.ini');
     const hud = section(ini, '[HUD]', '\n[Poise]');
     assert.match(hud, /^bShowReactiveBarEffects\s*=\s*true$/m);
     const main = read('src/main.cpp');
@@ -153,12 +155,11 @@ test('the player effect scan runs for the bars even when the poise debuffs are o
     assert.match(poise, /kShockHitSeconds = 1\.5/);
 });
 
-test('the two-handed default is 0.85 everywhere and concentration spells are excluded by default', () => {
-    assert.match(read('src/builtin_poise_state.h'), /float twoHandedMultiplier = 0\.85F;/);
-    assert.match(read('poisesystemhud.ini'), /^fTwoHandedMultiplier=0\.85$/m);
-    assert.match(read('src/menu_framework.cpp'), /QueueIniWrite\("fTwoHandedMultiplier", "0\.85", "Poise"\);/);
-    assert.match(read('README.md'), /0\.85/);
-    const ini = read('poisesystemhud.ini');
+test('the two-handed default is 1.15 everywhere and concentration spells are excluded by default', () => {
+    assert.match(read('src/builtin_poise_state.h'), /float twoHandedMultiplier = 1\.15F;/);
+    assert.match(read('TruePoise.ini'), /^fTwoHandedMultiplier=1\.15$/m);
+    assert.match(read('src/menu_framework.cpp'), /QueueIniWrite\("fTwoHandedMultiplier", "1\.15", "Poise"\);/);
+    const ini = read('TruePoise.ini');
     const magic = ini.split('[Magic Poise]')[1].split('\n[')[0];
     assert.match(magic, /^bConcentrationSpellsDealPoise=false$/m);
     assert.match(read('src/builtin_poise_state.h'), /bool concentrationSpellsDealPoise = false;/);

@@ -10,7 +10,7 @@ const poise = read('src', 'builtin_poise.cpp');
 const state = read('src', 'builtin_poise_state.h');
 const main = read('src', 'main.cpp');
 const menu = read('src', 'menu_framework.cpp');
-const ini = read('poisesystemhud.ini');
+const ini = read('TruePoise.ini');
 
 test('suppression setting is shipped, loaded, shown in the menu and reset', () => {
     assert.match(ini.split('[Poise]')[1], /^bSuppressVanillaStaggers=true$/m);
@@ -20,6 +20,21 @@ test('suppression setting is shipped, loaded, shown in the menu and reset', () =
     assert.match(menu, /Checkbox\("Suppress Vanilla Staggers##poise"/);
     assert.match(menu, /QueueIniWrite\("bSuppressVanillaStaggers", val, "Poise"\)/);
     assert.match(menu, /QueueIniWrite\("bSuppressVanillaStaggers", "true", "Poise"\)/);
+});
+
+test('hit pushback is disabled by default and can be re-enabled through settings', () => {
+    assert.match(ini.split('[Poise]')[1], /^bEnableHitPushBack=false$/m);
+    assert.match(state, /bool enableHitPushBack = false;/);
+    assert.match(main, /L"bEnableHitPushBack"[^\n]*poiseSettings\.enableHitPushBack[^\n]*L"Poise"/);
+    assert.match(main, /get_poiseEnableHitPushBack\(\) \{ return &poiseSettings\.enableHitPushBack; \}/);
+    assert.match(menu, /Checkbox\("Enable Hit Pushback##poise"/);
+    assert.match(menu, /QueueIniWrite\("bEnableHitPushBack", val, "Poise"\)/);
+    assert.match(menu, /QueueIniWrite\("bEnableHitPushBack", "false", "Poise"\)/);
+    assert.match(poise, /if \(data && suppressHitPushBack\) \{\s*data->pushBack = 0\.0F;/);
+});
+
+test('baseline does not install the reverted downstream pushback hook', () => {
+    assert.doesNotMatch(poise, /6CEEF3|ApplyHitPushBack|HitPushBackFunction|hitPushBackSite|ShouldSuppressHitPushBack/);
 });
 
 test('suppression installs after built-in poise and is gated on it', () => {
@@ -34,12 +49,33 @@ test('routine gate validates the prologue, whitelists shouts first and never cal
     assert.match(suppression, /0x48, 0x8B, 0xC4, 0x57, 0x48, 0x81, 0xEC, 0xC0, 0x00, 0x00, 0x00/);
     assert.match(suppression, /std::memcmp\(reinterpret_cast<const void\*>\(site\), prologue\.data\(\), prologue\.size\(\)\) != 0/);
     assert.match(suppression, /if \(suppressed\) \{[\s\S]*?return;\s+\}\s+originalStagger\(target, magnitude, aggressor\);/);
-    assert.match(suppression, /staggerWhitelist && disarmWhitelist &&\s+InstallRoutineGate/);
-    assert.ok(suppression.indexOf('InstallEffectWhitelist<StaggerEffectTag>(staggerEffect)') <
+    assert.match(suppression, /staggerGate && disarmWhitelist &&\s+InstallRoutineGate/);
+    assert.ok(suppression.indexOf('InstallStaggerEffectGate(staggerEffect)') <
         suppression.indexOf('InstallRoutineGate(REL::RelocationID'));
     assert.match(suppression, /StaggerGate::ScopedAllowStagger allowStagger;\s+original\(effect\);/);
     assert.match(suppression, /VTABLE_StaggerEffect/);
     assert.match(suppression, /VTABLE_DisarmEffect/);
+});
+
+test('StaggerEffect::Start suppresses melee-triggered stagger spells but keeps shouts whitelisted', () => {
+    const gate = suppression.slice(suppression.indexOf('struct StaggerEffectGate'),
+        suppression.indexOf('bool InstallStaggerEffectGate'));
+    assert.match(gate, /static_cast<RE::StaggerEffect\*>\(effect\)/);
+    assert.match(gate, /GetSpellType\(\) == RE::MagicSystem::SpellType::kVoicePower/);
+    assert.match(gate, /ScopedAllowStagger allowStagger/);
+    // The target must be resolved via GetTargetStatsObject()->As<Actor>() (never a raw effect->target cast),
+    // because MagicTarget is a secondary base of Actor and GetTargetActor()'s reinterpret_cast is invalid.
+    assert.match(gate, /stagger->target \? stagger->target->GetTargetStatsObject\(\) : nullptr/);
+    assert.match(gate, /refr->As<RE::Actor>\(\)/);
+    assert.doesNotMatch(gate, /GetTargetActor\(\)/);
+    assert.match(gate, /actor && BuiltinPoise::ShouldSuppressStagger\(actor\)/);
+    assert.match(gate, /LogSuppression\([^;]*"magic stagger"/);
+    assert.match(gate, /stagger->Dispel\(false\)/);
+    assert.match(gate, /return;/);
+    assert.match(suppression, /InstallStaggerEffectGate\(staggerEffect\)/);
+    assert.match(suppression, /vtable\.write_vfunc\(0x14, StaggerEffectGate::Thunk\)/);
+    // DisarmEffect keeps the plain whitelist
+    assert.match(suppression, /InstallEffectWhitelist<DisarmEffectTag>\(disarmEffect\)/);
 });
 
 test('ward break event is dropped only for suppressed actors and everything else is chained', () => {
@@ -63,8 +99,8 @@ test('suppression decision is lock-free and respects poise state, NPC setting an
     }
 });
 
-test('timed-bash staggerStart events sent straight to the graph are dropped for suppressed actors only', () => {
-    assert.match(suppression, /StaggerGate::IsWardBreakEvent\(event\.c_str\(\)\) \|\| StaggerGate::IsStaggerStartEvent\(event\.c_str\(\)\)/);
+    test('timed-bash staggerStart events sent straight to the graph are dropped for suppressed actors only', () => {
+        assert.match(suppression, /StaggerGate::IsWardBreakEvent\(event\.c_str\(\)\) \|\| StaggerGate::IsStaggerStartEvent\(event\.c_str\(\)\)/);
     const thunk = suppression.slice(suppression.indexOf('static bool Thunk(RE::IAnimationGraphManagerHolder* holder'));
     const body = thunk.slice(0, thunk.indexOf('return original(holder, event);'));
     assert.match(body, /BuiltinPoise::ShouldSuppressStagger\(actor\)/);
@@ -83,5 +119,5 @@ test('timed-bash stagger toggle is shipped, loaded, shown in the menu, reset and
     assert.match(menu, /QueueIniWrite\("bAllowTimedBashStaggers", val, "Poise"\)/);
     assert.match(menu, /QueueIniWrite\("bAllowTimedBashStaggers", "false", "Poise"\)/);
     assert.match(poise, /gateTimedBash\.store\(configuration\.allowTimedBashStaggers/);
-    assert.match(poise, /kTimedBash\)\) \{\s*timedBash\.emplace\(\);\s*\}\s*originalHit\(target, data\);/);
+        assert.match(poise, /kTimedBash\)\) \{\s*timedBash\.emplace\(\);\s*\}\s*originalHit\(target, data\);/);
 });

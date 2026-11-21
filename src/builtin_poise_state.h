@@ -13,6 +13,8 @@
 
 namespace BuiltinPoise
 {
+	inline constexpr float kPostBreakRegenMultiplier = 1.65F;
+
 	struct Settings
 	{
 		bool enabled = true;
@@ -22,16 +24,15 @@ namespace BuiltinPoise
 		float shieldWeightPoiseMultiplier = 0.0F;
 		bool applyShieldWeightToNPCs = true;
 		float baseHitDamage = 6.0F;
-		float weaponWeightDamageMultiplier = 0.375F;
-		float twoHandedMultiplier = 0.85F;
+		float creatureBaseHitPoiseDamage = 5.5F;
+		float weaponWeightDamageMultiplier = 0.35F;
+		float twoHandedMultiplier = 1.15F;
 		float shieldBashMultiplier = 1.0F;
 		float weaponBashMultiplier = 0.35F;
-		float creatureMultiplier = 0.8F;
-		float projectileMultiplier = 0.8F;
+		float projectileMultiplier = 0.65F;
 		float powerAttackMultiplier = 1.5F;
 		float shieldBlockedPhysicalMultiplier = 0.25F;
 		float weaponBlockedPhysicalMultiplier = 0.45F;
-		float unblockedPhysicalMultiplier = 2.5F;
 		float regenDelaySeconds = 3.0F;
 		float regenRatePerSecond = 8.0F;
 		float staggerImmunitySeconds = 1.0F;
@@ -51,6 +52,7 @@ namespace BuiltinPoise
 		float shieldBlockedMagicMultiplier = 0.4F;
 		float weaponBlockedMagicMultiplier = 0.7F;
 		bool suppressVanillaStaggers = true;
+		bool enableHitPushBack = false;
 		bool allowTimedBashStaggers = false;
 		bool enableCreaturePoise = true;
 		float lightCreaturePoiseMultiplier = 0.75F;
@@ -58,10 +60,10 @@ namespace BuiltinPoise
 		float heavyCreaturePoiseMultiplier = 3.75F;
 		float bossCreaturePoiseMultiplier = 6.0F;
 		float bossCreatureRegenMultiplier = 1.5F;
-		float lightCreatureDamageMultiplier = 0.6F;
-		float mediumCreatureDamageMultiplier = 1.2F;
-		float heavyCreatureDamageMultiplier = 1.375F;
-		float bossCreatureDamageMultiplier = 2.25F;
+		float lightCreatureDamageMultiplier = 0.75F;
+		float mediumCreatureDamageMultiplier = 1.25F;
+		float heavyCreatureDamageMultiplier = 1.65F;
+		float bossCreatureDamageMultiplier = 2.40F;
 		float creatureStaggerImmunitySeconds = 2.0F;
 		float summonPoiseMultiplier = 1.5F;
 		float npcMagicPoiseMultiplier = 0.6F;
@@ -613,7 +615,7 @@ namespace BuiltinPoise
 		} else if (ranged) {
 			damage *= settings.projectileMultiplier;
 		}
-		result.lightHit = damage * settings.unblockedPhysicalMultiplier;
+		result.lightHit = damage;
 		result.powerHit = result.lightHit * settings.powerAttackMultiplier;
 		return result;
 	}
@@ -627,6 +629,7 @@ namespace BuiltinPoise
 			maximum = 0.0F;
 			regenDelay = 0.0F;
 			immunity = 0.0F;
+			recoveringFromBreak = false;
 			lightArmorBonusPoise = 0.0F;
 			fleshBonusPoise = 0.0F;
 			debuffs = {};
@@ -648,6 +651,11 @@ namespace BuiltinPoise
 
 		// An absorb hit landed: Sapped holds for a short window even if the effect itself is already gone.
 		void NoteSapped(std::string_view label) { debuffs.NoteSapped(kSappedPulseSeconds, label); }
+
+		void SetPlayerTarget(bool value) noexcept
+		{
+			isPlayer = value;
+		}
 
 		void SetMaximum(float newMaximum)
 		{
@@ -679,10 +687,13 @@ namespace BuiltinPoise
 			const auto raw = shieldBlocked ? PhysicalBonus{} : PhysicalDamageBonus(settings, hit.physicalDamage);
 			lastRawBonus = raw.bonus;
 			lastRawCapped = raw.capped;
-			float damage = settings.baseHitDamage + weight * settings.weaponWeightDamageMultiplier + raw.bonus;
+			const bool creatureHit = hit.type == HitType::creature;
+			float damage = creatureHit ? settings.creatureBaseHitPoiseDamage + raw.bonus :
+				settings.baseHitDamage + weight * settings.weaponWeightDamageMultiplier + raw.bonus;
 			if (breakdown) {
 				*breakdown = {};
-				breakdown->baseDamage = settings.baseHitDamage + weight * settings.weaponWeightDamageMultiplier;
+				breakdown->baseDamage = creatureHit ? settings.creatureBaseHitPoiseDamage :
+					settings.baseHitDamage + weight * settings.weaponWeightDamageMultiplier;
 				breakdown->rawBonus = raw.bonus;
 				breakdown->rawCapped = raw.capped;
 			}
@@ -709,10 +720,9 @@ namespace BuiltinPoise
 			}
 			case HitType::creature: {
 				const float tierMultiplier = CreatureDamageTierMultiplier(settings, hit.attackerTier);
-				damage *= settings.creatureMultiplier * tierMultiplier;
+				damage *= tierMultiplier;
 				if (breakdown) {
 					breakdown->typeLabel = "Creature";
-					breakdown->Add("Creature", settings.creatureMultiplier);
 					if (tierMultiplier != 1.0F) {
 						breakdown->Add(AttackerTierLabel(hit.attackerTier), tierMultiplier);
 					}
@@ -743,17 +753,12 @@ namespace BuiltinPoise
 					}
 				}
 			}
-			// Blocking scales the unblocked damage, so the multipliers are the share of an unblocked hit that gets through.
-			damage *= settings.unblockedPhysicalMultiplier;
-			if (breakdown) {
-				breakdown->Add("Unblocked", settings.unblockedPhysicalMultiplier);
-			}
 			if (hit.blocked) {
 				const float blocked = hit.shieldBlocked ? settings.shieldBlockedPhysicalMultiplier :
 					settings.weaponBlockedPhysicalMultiplier;
 				damage *= blocked;
 				if (breakdown) {
-					breakdown->Add(hit.shieldBlocked ? "Shield Block" : "Weapon Block", blocked);
+					breakdown->Add(hit.shieldBlocked ? "Blocked (Shield)" : "Blocked (Weapon)", blocked);
 				}
 			}
 			if (breakdown) {
@@ -773,12 +778,21 @@ namespace BuiltinPoise
 			if (!std::isfinite(damage) || damage <= 0.0F) {
 				return { true, false, 0.0F, raw.bonus, raw.capped, false };
 			}
-			regenDelay = settings.regenDelaySeconds + ResolveDebuffEffects(settings, debuffs).delayBonus;
+			const auto fx = ResolveDebuffEffects(settings, debuffs);
+			regenDelay = settings.regenDelaySeconds + fx.delayBonus;
 			current = (std::max)(0.0F, current - damage);
 			if (current > 0.0F) {
 				return { true, false, 0.0F, raw.bonus, raw.capped, false };
 			}
-			current = maximum;
+			if (isPlayer) {
+				current = 0.0F;
+				recoveringFromBreak = true;
+				regenDelay = fx.delayBonus;
+			} else {
+				current = maximum;
+				recoveringFromBreak = false;
+				regenDelay = settings.regenDelaySeconds + fx.delayBonus;
+			}
 			immunity = creatureImmunity ? settings.creatureStaggerImmunitySeconds : settings.staggerImmunitySeconds;
 			return { true, true, std::clamp(damage / maximum, minimumBreakMagnitude, 1.0F), raw.bonus, raw.capped, false };
 		}
@@ -795,16 +809,31 @@ namespace BuiltinPoise
 			if (!settings.enabled || maximum <= 0.0F || !std::isfinite(delta) || delta <= 0.0F) {
 				return;
 			}
-			immunity = (std::max)(0.0F, immunity - delta);
+			const float oldImmunity = immunity;
+			immunity = (std::max)(0.0F, oldImmunity - delta);
+			const float recoveryDelta = (std::max)(0.0F, delta - oldImmunity);
 			const float oldDelay = regenDelay;
-			regenDelay = (std::max)(0.0F, regenDelay - delta);
-			const float regenTime = (std::max)(0.0F, delta - oldDelay);
+			regenDelay = (std::max)(0.0F, regenDelay - recoveryDelta);
+			float regenTime = (std::max)(0.0F, recoveryDelta - oldDelay);
 			const auto fx = ResolveDebuffEffects(settings, debuffs);
 			const float rate = fx.sapped ? 0.0F : settings.regenRatePerSecond * regenMultiplier * fx.regenRateMult;
 			// Recovery only climbs toward the ceiling; poise already above it is never reduced.
 			const float ceiling = maximum * fx.ceilingRatio;
 			if (current < ceiling) {
-				current = (std::min)(ceiling, current + rate * regenTime);
+				const float surgeLimit = maximum * 0.5F;
+				float recovered = 0.0F;
+				if (recoveringFromBreak && current < surgeLimit && rate > 0.0F) {
+					const float surgeRate = rate * kPostBreakRegenMultiplier;
+					const float surgeCeiling = (std::min)(ceiling, surgeLimit);
+					const float timeToSurgeLimit = (std::max)(0.0F, surgeCeiling - current) / surgeRate;
+					const float surgeTime = (std::min)(regenTime, timeToSurgeLimit);
+					recovered = surgeRate * surgeTime;
+					regenTime -= surgeTime;
+					if (current + recovered >= surgeLimit) {
+						recoveringFromBreak = false;
+					}
+				}
+				current = (std::min)(ceiling, current + recovered + rate * regenTime);
 			}
 			debuffs.sappedPulse = (std::max)(0.0F, debuffs.sappedPulse - delta);
 		}
@@ -816,6 +845,8 @@ namespace BuiltinPoise
 		float regenMultiplier = 1.0F;
 		float minimumBreakMagnitude = kDefaultMinimumBreakMagnitude;
 		bool creatureImmunity = false;
+		bool isPlayer = false;
+		bool recoveringFromBreak = false;
 		PoiseDebuffs debuffs;
 		// Telemetry: contribution of each term to the current maximum and the latest hit's physical-damage bonus.
 		float lightArmorBonusPoise = 0.0F;
